@@ -1,0 +1,159 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Clerking Assistant - Ward Version</title>
+  <style>
+    /* Reset some defaults */
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: Arial, sans-serif; }
+    body { background-color: #f4f6f8; color: #333; padding: 20px; }
+
+    h2 { text-align: center; margin-bottom: 20px; color: #1e3a8a; }
+    h3 { margin-top: 20px; margin-bottom: 10px; color: #1e40af; }
+
+    input, textarea, select, button {
+      width: 100%;
+      padding: 8px 10px;
+      margin-bottom: 10px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      font-size: 14px;
+    }
+
+    textarea { resize: vertical; min-height: 40px; }
+
+    select { background-color: #fff; }
+
+    button {
+      cursor: pointer;
+      border: none;
+      background-color: #1e40af;
+      color: white;
+      font-weight: bold;
+      transition: 0.2s;
+    }
+    button:hover { background-color: #3b82f6; }
+
+    .container { max-width: 900px; margin: auto; background-color: #fff; padding: 20px 30px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+
+    #alert { color: #b91c1c; font-weight: bold; margin-top: 10px; white-space: pre-line; }
+
+    #summary { width: 100%; height: 300px; margin-top: 10px; }
+
+    label { font-weight: bold; font-size: 14px; margin-top: 5px; display: block; }
+
+    .row { display: flex; flex-wrap: wrap; gap: 10px; }
+    .row > div { flex: 1 1 45%; }
+
+    /* Responsive */
+    @media(max-width:700px){
+      .row > div { flex: 1 1 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Smart Clerking Assistant</h2>
+
+    <!-- Biodata -->
+    <h3>Biodata</h3>
+    <div class="row">
+      <div><input id="name" placeholder="Patient Name"></div>
+      <div><input id="age" type="number" placeholder="Age"></div>
+    </div>
+    <div class="row">
+      <div><input id="sex" placeholder="Sex"></div>
+      <div><input id="occupation" placeholder="Occupation"></div>
+    </div>
+    <input id="address" placeholder="Address"><br>
+
+    <!-- History -->
+    <h3>History</h3>
+    <textarea id="pc" placeholder="Presenting Complaint"></textarea>
+    <textarea id="hpc" placeholder="History of Presenting Complaint"></textarea>
+    <textarea id="odq" placeholder="On Direct Questioning"></textarea>
+    <textarea id="pmsh" placeholder="Past Medical And Surgical History"></textarea>
+    <textarea id="drugHx" placeholder="Drug History"></textarea>
+    <textarea id="allergyHx" placeholder="Allergy History"></textarea>
+    <textarea id="familyHx" placeholder="Family History"></textarea>
+    <textarea id="socialHx" placeholder="Social History"></textarea>
+    <textarea id="ros" placeholder="Review of Systems"></textarea>
+
+        <!-- Physical Examination -->
+
+    <h3>Physical Examination</h3>
+<button onclick="insertPhysicalTemplate()">ADD TEMPLATE-</button>
+<textarea id="generalExam" placeholder="General Examination"></textarea>
+
+    
+    <div class="row">
+      <div><input id="bp" placeholder="BP e.g. 120/80"></div>
+      <div><input id="pulse" placeholder="Pulse"></div>
+    </div>
+    <div class="row">
+      <div><input id="rr" placeholder="Respiratory Rate"></div>
+      <div><input id="temp" placeholder="Temperature"></div>
+    </div>
+    
+
+    <!-- Unit selection -->
+    <h3>Unit</h3>
+    <select id="unit">
+      <option value="">Select Unit</option>
+      <option value="medicine">Medicine</option>
+      <option value="cardio">Cardiology</option>
+      <option value="resp">Respiratory</option>
+      <option value="obgyn">Obstetrics & Gynaecology</option>
+      <option value="cns">Neurology</option>
+    </select>
+    <div id="unitSection"></div>
+
+    <!-- Laboratory Review -->
+    <h3>Laboratory Review</h3>
+    <div class="row">
+      <div><label>LFT - ALT (U/L)</label><input id="alt" placeholder="ALT"></div>
+      <div><label>LFT - AST (U/L)</label><input id="ast" placeholder="AST"></div>
+    </div>
+    <div class="row">
+      <div><label>RFT - Creatinine (mg/dL)</label><input id="creatinine" placeholder="Creatinine"></div>
+      <div><label>RFT - Urea (mg/dL)</label><input id="urea" placeholder="Urea"></div>
+    </div>
+    <div class="row">
+      <div><label>FBC - Hemoglobin (g/dL)</label><input id="hb" placeholder="Hb"></div>
+      <div><label>FBC - WBC (10^9/L)</label><input id="wbc" placeholder="WBC"></div>
+    </div>
+    <div class="row">
+      <div><label>FBC - Platelets (10^9/L)</label><input id="platelets" placeholder="Platelets"></div>
+      <div><label>Urine RE - Protein (mg/dL)</label><input id="urine_protein" placeholder="Protein"></div>
+    </div>
+    <label>Urine RE - Glucose (mg/dL)</label><input id="urine_glucose" placeholder="Glucose">
+
+    <!-- Impression & Plan -->
+    <h3>Impression / Diagnosis</h3>
+    <textarea id="impression" placeholder="Enter your impression / diagnosis"></textarea>
+    <h3>Plan</h3>
+    <textarea id="plan" placeholder="Plan will be suggested here" readonly></textarea>
+
+    <!-- Controls -->
+    <div class="row">
+      <div><button onclick="analyze()">Analyze & Generate Summary</button></div>
+      <div><button onclick="savePatient()">💾 Save Patient</button></div>
+    </div>
+    <div class="row">
+      <div><button onclick="loadPatients()">📂 Load Patients</button></div>
+      <div><button onclick="clearPatients()">🗑 Clear All Patients</button></div>
+    </div>
+
+    <!-- Patient dropdown -->
+    <select id="patientList" onchange="loadPatientFromList()">
+      <option value="">--Select Patient--</option>
+    </select>
+
+    <p id="alert"></p>
+    <textarea id="summary"></textarea>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
