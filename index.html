@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Smart Clerking Assistant</title>
-  <link rel="stylesheet" href="styles.css?v=20260708b">
+  <link rel="stylesheet" href="styles.css?v=20260708d">
 </head>
 <body>
   <div class="app">
@@ -31,102 +31,130 @@
 
     <!-- ========== PATIENTS PAGE ========== -->
     <main id="pagePatients" class="page active" aria-labelledby="patientsHeading">
-      <section class="panel patient-workspace">
-        <div class="panel-head">
-          <h2 id="patientsHeading">Patient management</h2>
-          <button type="button" id="btnNewPatient" class="btn-secondary">New patient</button>
-        </div>
+      <div id="patientsHome" class="patients-home">
+        <div class="patients-layout">
+          <div class="patients-main">
+            <section class="panel patient-workspace">
+              <div class="panel-head">
+                <h2 id="patientsHeading">Patients</h2>
+                <button type="button" id="btnNewPatient" class="btn-secondary">New patient</button>
+              </div>
 
-        <div class="search-block">
-          <label for="searchQuery">Search patients</label>
-          <div class="search-row">
-            <input id="searchQuery" placeholder="Name, local ID, phone, or date of birth" autocomplete="off">
-            <button type="button" id="btnSearch" class="btn-secondary">Search</button>
+              <div class="search-block">
+                <label for="searchQuery">Search patients</label>
+                <div class="search-row">
+                  <input id="searchQuery" placeholder="Name, local ID, phone, or date of birth" autocomplete="off">
+                  <button type="button" id="btnSearch" class="btn-secondary">Search</button>
+                </div>
+                <div id="searchResults" class="search-results" role="listbox" aria-label="Matching patients"></div>
+              </div>
+
+              <div id="patientEmptyState" class="compact-empty">
+                <p class="empty-title">No patient selected</p>
+                <p>
+                  Search for an existing patient or create a new patient to begin.
+                </p>
+                <div class="btn-row">
+                  <button type="button" id="btnFocusSearch" class="btn-secondary">Search patients</button>
+                  <button type="button" id="btnCreateFromEmpty" class="btn-secondary">Create new patient</button>
+                  <button type="button" id="btnHowItWorks" class="link-btn">How does this work?</button>
+                </div>
+              </div>
+
+              <div id="patientFormBlock">
+                <div class="level-label">Patient profile</div>
+                <h3 class="section-title">Patient information</h3>
+                <p id="patientFormHint" class="hint">Fill in details below, then save the patient.</p>
+                <div id="duplicateWarning" class="alert-box hidden" role="alert"></div>
+
+                <div class="form-grid">
+                  <div>
+                    <label for="name">Name *</label>
+                    <input id="name" autocomplete="off" required>
+                  </div>
+                  <div>
+                    <label for="localPatientId">Local patient ID</label>
+                    <input id="localPatientId" autocomplete="off">
+                  </div>
+                  <div>
+                    <label for="dob">Date of birth <span class="pref">(preferred)</span></label>
+                    <input id="dob" type="date">
+                  </div>
+                  <div>
+                    <label for="age">Age</label>
+                    <input id="age" type="number" min="0" max="130" placeholder="Auto from DOB">
+                    <p class="field-hint" id="ageHint">Enter date of birth to calculate age, or estimated age if DOB unknown.</p>
+                  </div>
+                  <div>
+                    <label for="sex">Sex</label>
+                    <select id="sex">
+                      <option value="">—</option>
+                      <option value="female">Female</option>
+                      <option value="male">Male</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label for="phone">Phone</label>
+                    <input id="phone" autocomplete="off">
+                  </div>
+                  <div>
+                    <label for="occupation">Occupation</label>
+                    <input id="occupation">
+                  </div>
+                  <div class="span-2">
+                    <label for="address">Address</label>
+                    <input id="address">
+                  </div>
+                </div>
+
+                <div class="btn-row patient-actions">
+                  <button type="button" id="btnSavePatient" class="btn-primary">Save patient</button>
+                  <button type="button" id="btnCancelPatient" class="btn-secondary">Cancel changes</button>
+                  <button type="button" id="btnNewEncounter" class="btn-secondary" disabled title="Save or select a patient first">Start new encounter</button>
+                </div>
+              </div>
+            </section>
           </div>
-          <div id="searchResults" class="search-results" role="listbox" aria-label="Matching patients"></div>
-        </div>
 
-        <div id="patientEmptyState" class="compact-empty">
-          <p>
-            Search for an existing patient and <strong>click a result</strong>, or press
-            <strong>New patient</strong> to create one.
-          </p>
-          <button type="button" id="btnHowItWorks" class="link-btn">How does this work?</button>
-        </div>
+          <aside class="patients-side" aria-label="Patient context">
+            <section class="panel side-panel" id="recentPatientsPanel">
+              <h2>Recent patients</h2>
+              <div id="recentPatients" class="recent-list">
+                <p class="muted">No recent patients yet.</p>
+              </div>
+            </section>
 
-        <div id="patientFormBlock">
-          <h3 class="section-title">Patient information</h3>
-          <p id="patientFormHint" class="hint">Fill in details below, then save the patient.</p>
-          <div id="duplicateWarning" class="alert-box hidden" role="alert"></div>
+            <section class="panel side-panel" id="patientSummaryPanel">
+              <h2>Selected patient</h2>
+              <div id="patientSummaryCard" class="patient-summary-card">
+                <p class="muted">Select or create a patient to see a summary here.</p>
+              </div>
+            </section>
 
-          <div class="form-grid">
-            <div>
-              <label for="name">Name *</label>
-              <input id="name" autocomplete="off" required>
-            </div>
-            <div>
-              <label for="localPatientId">Local patient ID</label>
-              <input id="localPatientId" autocomplete="off">
-            </div>
-            <div>
-              <label for="dob">Date of birth <span class="pref">(preferred)</span></label>
-              <input id="dob" type="date">
-            </div>
-            <div>
-              <label for="age">Age</label>
-              <input id="age" type="number" min="0" max="130" placeholder="Auto from DOB">
-              <p class="field-hint" id="ageHint">Enter date of birth to calculate age, or estimated age if DOB unknown.</p>
-            </div>
-            <div>
-              <label for="sex">Sex</label>
-              <select id="sex">
+            <section class="panel side-panel encounters-panel" id="encountersPanel">
+              <h2>Previous encounters</h2>
+              <div id="encountersEmpty" class="compact-empty">
+                <p id="encountersEmptyText">Select a patient to view encounters.</p>
+                <button type="button" id="btnNewEncounterEmpty" class="btn-primary hidden" disabled>Start new encounter</button>
+              </div>
+              <div id="encounterCards" class="encounter-table-wrap hidden" role="list"></div>
+              <select id="encounterList" class="sr-only" aria-hidden="true" tabindex="-1" style="display:none">
                 <option value="">—</option>
-                <option value="female">Female</option>
-                <option value="male">Male</option>
-                <option value="other">Other</option>
               </select>
-            </div>
-            <div>
-              <label for="phone">Phone</label>
-              <input id="phone" autocomplete="off">
-            </div>
-            <div>
-              <label for="occupation">Occupation</label>
-              <input id="occupation">
-            </div>
-            <div class="span-2">
-              <label for="address">Address</label>
-              <input id="address">
-            </div>
-          </div>
-
-          <div class="btn-row patient-actions">
-            <button type="button" id="btnSavePatient" class="btn-primary">Save patient</button>
-            <button type="button" id="btnNewEncounter" class="btn-primary" disabled title="Save or select a patient first">Start new encounter</button>
-          </div>
+            </section>
+          </aside>
         </div>
-      </section>
-
-      <section class="panel encounters-panel" id="encountersPanel">
-        <h2>Previous encounters</h2>
-        <div id="encountersEmpty" class="compact-empty">
-          <p id="encountersEmptyText">Select a patient to view encounters.</p>
-          <button type="button" id="btnNewEncounterEmpty" class="btn-primary hidden" disabled>Start new encounter</button>
-        </div>
-        <div id="encounterCards" class="encounter-cards hidden" role="list"></div>
-        <!-- Keep select for programmatic compatibility; visually replaced by cards -->
-        <select id="encounterList" class="sr-only" aria-hidden="true" tabindex="-1" style="display:none">
-          <option value="">—</option>
-        </select>
-      </section>
+      </div>
 
       <!-- Encounter workspace (only when encounter active) -->
       <section id="encounterWorkspace" class="encounter-workspace hidden">
-        <div class="encounter-toolbar panel-lite">
+        <div class="encounter-context-bar panel-lite">
           <div class="encounter-toolbar-top">
             <button type="button" id="btnBackToPatient" class="btn-secondary">← Back to patient</button>
-            <div id="patientContext" class="patient-context">No patient selected</div>
+            <div class="level-label encounter-level">Current encounter</div>
           </div>
+          <div id="patientContext" class="patient-context patient-summary-inline">No patient selected</div>
           <div class="grid-2 compact encounter-meta-fields">
             <div>
               <label for="clinicianName">Clinician / staff name</label>
@@ -146,12 +174,12 @@
           </div>
         </div>
 
-        <nav class="stage-nav" aria-label="Encounter sections" id="stageNav">
-          <button type="button" class="stage-tab active" data-stage="history">History</button>
-          <button type="button" class="stage-tab" data-stage="examination">Examination</button>
-          <button type="button" class="stage-tab" data-stage="assessment">Assessment</button>
-          <button type="button" class="stage-tab" data-stage="plan">Plan</button>
-          <button type="button" class="stage-tab" data-stage="summary">Summary</button>
+        <nav class="stage-nav sticky-stage" aria-label="Encounter sections" id="stageNav">
+          <button type="button" class="stage-tab active" data-stage="history" title="History">History <span class="stage-progress" data-progress="history"></span></button>
+          <button type="button" class="stage-tab" data-stage="examination" title="Examination">Examination <span class="stage-progress" data-progress="examination"></span></button>
+          <button type="button" class="stage-tab" data-stage="assessment" title="Assessment">Assessment <span class="stage-progress" data-progress="assessment"></span></button>
+          <button type="button" class="stage-tab" data-stage="plan" title="Plan">Plan <span class="stage-progress" data-progress="plan"></span></button>
+          <button type="button" class="stage-tab" data-stage="summary" title="Summary">Summary <span class="stage-progress" data-progress="summary"></span></button>
         </nav>
         <label class="stage-select-label" for="stageSelect">Section</label>
         <select id="stageSelect" class="stage-select" aria-label="Encounter section">
@@ -165,59 +193,87 @@
         <!-- HISTORY -->
         <section class="stage-panel panel" data-stage-panel="history">
           <h2>History</h2>
-          <label for="pc">Presenting complaint (free text)</label>
-          <textarea id="pc" rows="2" placeholder="e.g. Cough and fever for three days"></textarea>
 
-          <div class="row">
-            <div>
-              <label for="symptomInput">Add / confirm symptom</label>
-              <input id="symptomInput" placeholder="Type to autocomplete…" list="symptomSuggestions">
-              <datalist id="symptomSuggestions"></datalist>
-            </div>
-            <div class="btn-row align-end">
-              <button type="button" id="btnAddSymptom" class="btn-secondary">Add symptom</button>
-            </div>
-          </div>
-          <div id="symptomChips" class="chip-list" aria-live="polite"></div>
+          <details class="hx-section" open data-hx="pc">
+            <summary>Presenting complaint <span class="completion-dot" data-complete="pc"></span></summary>
+            <label for="pc">Presenting complaint (free text)</label>
+            <textarea id="pc" rows="2" placeholder="e.g. Cough and fever for three days"></textarea>
+          </details>
 
-          <div class="btn-row primary-action-row">
-            <button type="button" id="btnGenerateQuestions" class="btn-primary" disabled title="Confirm at least one symptom first">Generate questions</button>
-          </div>
-          <p class="hint">Suggested questions are decision support — ask the patient and record answers.</p>
+          <details class="hx-section" open data-hx="symptoms">
+            <summary>Confirmed symptoms <span class="completion-dot" data-complete="symptoms"></span></summary>
+            <div class="row">
+              <div>
+                <label for="symptomInput">Add / confirm symptom</label>
+                <input id="symptomInput" placeholder="Type to autocomplete…" list="symptomSuggestions">
+                <datalist id="symptomSuggestions"></datalist>
+              </div>
+              <div class="btn-row align-end">
+                <button type="button" id="btnAddSymptom" class="btn-secondary">Add symptom</button>
+              </div>
+            </div>
+            <div id="symptomChips" class="chip-list" aria-live="polite"></div>
+          </details>
 
-          <h3>Suggested questions <span class="tag-system">Suggested by system</span></h3>
-          <div id="questionsPanel" class="questions-panel gen-block">
-            <p class="muted">No questions yet. Confirm symptoms, then generate questions.</p>
-          </div>
+          <details class="hx-section" open data-hx="questions">
+            <summary>Suggested follow-up questions <span class="tag-system">Suggested by system</span> <span class="completion-dot" data-complete="questions"></span></summary>
+            <div class="btn-row primary-action-row">
+              <button type="button" id="btnGenerateQuestions" class="btn-primary" disabled title="Confirm at least one symptom first">Generate questions</button>
+            </div>
+            <p class="hint">Suggested questions are decision support — ask the patient and record answers.</p>
+            <div id="questionsPanel" class="questions-panel gen-block">
+              <p class="muted">No questions yet. Confirm symptoms, then generate questions.</p>
+            </div>
+          </details>
 
-          <h3>History details <span class="tag-clinician">Clinician-entered</span></h3>
-          <label for="hpc">History of presenting complaint</label>
-          <textarea id="hpc" rows="2"></textarea>
-          <label for="odq">On direct questioning</label>
-          <textarea id="odq" rows="2"></textarea>
-          <label for="pastMedicalSurgicalHistory">Past medical &amp; surgical history</label>
-          <textarea id="pastMedicalSurgicalHistory" rows="2"></textarea>
-          <div class="grid-2">
-            <div>
-              <label for="drugHx">Drug history</label>
-              <textarea id="drugHx" rows="2"></textarea>
+          <details class="hx-section" data-hx="hpc">
+            <summary>History of presenting complaint <span class="tag-clinician">Clinician-entered</span> <span class="completion-dot" data-complete="hpc"></span></summary>
+            <label for="hpc">History of presenting complaint</label>
+            <textarea id="hpc" rows="2"></textarea>
+            <label for="odq">On direct questioning</label>
+            <textarea id="odq" rows="2"></textarea>
+          </details>
+
+          <details class="hx-section" data-hx="background">
+            <summary>Background history <span class="tag-clinician">Clinician-entered</span> <span class="completion-dot" data-complete="background"></span></summary>
+            <label for="pastMedicalSurgicalHistory">Past medical &amp; surgical history</label>
+            <textarea id="pastMedicalSurgicalHistory" rows="2"></textarea>
+            <div id="unitSection"></div>
+          </details>
+
+          <details class="hx-section" data-hx="meds">
+            <summary>Medications and allergies <span class="tag-clinician">Clinician-entered</span> <span class="completion-dot" data-complete="meds"></span></summary>
+            <div class="grid-2">
+              <div>
+                <label for="drugHx">Drug history</label>
+                <textarea id="drugHx" rows="2"></textarea>
+              </div>
+              <div>
+                <label for="allergyHx">Allergy history</label>
+                <textarea id="allergyHx" rows="2"></textarea>
+              </div>
             </div>
-            <div>
-              <label for="allergyHx">Allergy history</label>
-              <textarea id="allergyHx" rows="2"></textarea>
+          </details>
+
+          <details class="hx-section" data-hx="family">
+            <summary>Family and social history <span class="tag-clinician">Clinician-entered</span> <span class="completion-dot" data-complete="family"></span></summary>
+            <div class="grid-2">
+              <div>
+                <label for="familyHx">Family history</label>
+                <textarea id="familyHx" rows="2"></textarea>
+              </div>
+              <div>
+                <label for="socialHx">Social history</label>
+                <textarea id="socialHx" rows="2"></textarea>
+              </div>
             </div>
-            <div>
-              <label for="familyHx">Family history</label>
-              <textarea id="familyHx" rows="2"></textarea>
-            </div>
-            <div>
-              <label for="socialHx">Social history</label>
-              <textarea id="socialHx" rows="2"></textarea>
-            </div>
-          </div>
-          <label for="ros">Review of systems</label>
-          <textarea id="ros" rows="2"></textarea>
-          <div id="unitSection"></div>
+          </details>
+
+          <details class="hx-section" data-hx="ros">
+            <summary>Review of systems <span class="tag-clinician">Clinician-entered</span> <span class="completion-dot" data-complete="ros"></span></summary>
+            <label for="ros">Review of systems</label>
+            <textarea id="ros" rows="2"></textarea>
+          </details>
 
           <div class="stage-footer">
             <button type="button" class="btn-primary stage-next" data-next="examination">Continue to examination</button>
@@ -431,7 +487,7 @@
 
       <section class="panel danger-panel">
         <h2>Danger zone</h2>
-        <p class="warn-text">This permanently deletes all patient and encounter records stored in this browser. Download a backup first.</p>
+        <p class="warn-text">This permanently deletes all patient and encounter records stored in this browser. Download a backup before continuing.</p>
         <button type="button" id="btnReset" class="btn-danger">Delete all locally saved records</button>
       </section>
     </main>
@@ -469,7 +525,7 @@
     <div class="modal-card" role="document">
       <h2 id="deleteTitle">Delete all locally saved records?</h2>
       <p id="deleteCountText">This will permanently delete saved patients and encounters in this browser.</p>
-      <p class="warn-text">Type <strong>DELETE ALL RECORDS</strong> to confirm.</p>
+      <p class="warn-text">Download a backup before continuing. Type <strong>DELETE ALL RECORDS</strong> to confirm.</p>
       <label for="deleteConfirmInput">Confirmation</label>
       <input id="deleteConfirmInput" autocomplete="off" placeholder="DELETE ALL RECORDS">
       <div class="btn-row">
@@ -479,8 +535,8 @@
     </div>
   </div>
 
-  <script src="js/localStore.js?v=20260708b"></script>
-  <script src="js/knowledge.js?v=20260708b"></script>
-  <script src="js/app.js?v=20260708b"></script>
+  <script src="js/localStore.js?v=20260708d"></script>
+  <script src="js/knowledge.js?v=20260708d"></script>
+  <script src="js/app.js?v=20260708d"></script>
 </body>
 </html>

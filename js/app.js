@@ -74,29 +74,30 @@
 
     if (!state.patientId) {
       patientLine.textContent = "Patient: not selected";
-    } else if (state.patientSavedAt) {
-      patientLine.textContent = "Patient saved · " + formatTime(state.patientSavedAt);
     } else {
-      patientLine.textContent = "Patient selected · not saved yet";
+      const p = Store.patientStore.getById(state.patientId);
+      const name = p && p.name ? p.name : "Selected";
+      patientLine.textContent = "Patient: " + name;
     }
 
     if (!state.encounterStarted) {
       encounterLine.textContent = "Encounter: none";
+    } else if (state.encounterSavedAt && !state.dirty) {
+      encounterLine.textContent = "Encounter: saved";
     } else if (state.dirty) {
-      encounterLine.textContent = state.encounterSavedAt
-        ? "Encounter draft outdated · last saved " + formatTime(state.encounterSavedAt)
-        : "Encounter draft · not saved yet";
-    } else if (state.encounterSavedAt) {
-      encounterLine.textContent =
-        "Encounter draft saved locally at " + formatTime(state.encounterSavedAt);
+      encounterLine.textContent = "Encounter: draft";
     } else {
-      encounterLine.textContent = "Encounter started · not saved yet";
+      encounterLine.textContent = "Encounter: active";
     }
 
     if (state.dirty) {
       changeLine.textContent = "Unsaved changes";
       changeLine.classList.add("unsaved");
       changeLine.classList.remove("muted");
+    } else if (state.encounterSavedAt || state.patientSavedAt) {
+      changeLine.textContent = "Saved";
+      changeLine.classList.remove("unsaved");
+      changeLine.classList.add("muted");
     } else {
       changeLine.textContent = "No unsaved changes";
       changeLine.classList.remove("unsaved");
@@ -176,21 +177,31 @@
     });
   }
 
+  function planIsApproved() {
+    const el = $("planStatus");
+    return el && el.dataset.status === "approved";
+  }
+
   function updateActionGates() {
     const hasPatient = !!state.patientId;
     const hasEncounter = !!state.encounterStarted;
     const hasSymptoms = confirmedSymptoms().length > 0;
     const hasSelection = !!state.selectedConditionId;
+    const hasImpression = !!getVal("impression").trim() || hasSelection;
     const hasPlan = !!getVal("planDraft").trim();
     const hasApprover = !!(getVal("planApprover").trim() || getVal("clinicianName").trim());
-    const showForm = true; // Patient form stays visible on Patients page
+    const approved = planIsApproved();
     const showEmptyHint = !hasPatient && !state.editingNewPatient;
 
+    if ($("patientsHome")) {
+      $("patientsHome").classList.toggle("hidden", hasEncounter);
+    }
     if ($("patientEmptyState")) {
       $("patientEmptyState").classList.toggle("hidden", !showEmptyHint);
     }
     if ($("patientFormBlock")) {
-      $("patientFormBlock").classList.remove("hidden");
+      const showForm = hasPatient || state.editingNewPatient;
+      $("patientFormBlock").classList.toggle("hidden", !showForm);
     }
     if ($("patientFormHint")) {
       $("patientFormHint").textContent = hasPatient
@@ -198,6 +209,19 @@
         : state.editingNewPatient
           ? "Enter the new patient details, then press Save patient."
           : "Fill in details below to create a patient, or click a search result to open one.";
+    }
+
+    // Button hierarchy: after patient saved, Start encounter is primary
+    const startBtn = $("btnNewEncounter");
+    const saveBtn = $("btnSavePatient");
+    if (startBtn && saveBtn) {
+      if (hasPatient && !state.dirty) {
+        startBtn.className = "btn-primary";
+        saveBtn.className = "btn-secondary";
+      } else {
+        startBtn.className = "btn-secondary";
+        saveBtn.className = "btn-primary";
+      }
     }
 
     setDisabled(
@@ -213,11 +237,6 @@
 
     if ($("encounterWorkspace")) {
       $("encounterWorkspace").classList.toggle("hidden", !hasEncounter);
-    }
-    if (hasEncounter && $("encountersPanel")) {
-      $("encountersPanel").classList.add("hidden");
-    } else if ($("encountersPanel")) {
-      $("encountersPanel").classList.remove("hidden");
     }
 
     setDisabled(
@@ -240,8 +259,10 @@
     );
     setDisabled(
       "btnDraftPlan",
-      !hasSelection,
-      hasSelection ? "Draft plan from selected condition" : "Select a condition candidate first"
+      !hasSelection && !hasImpression,
+      hasSelection || hasImpression
+        ? "Draft plan from selected condition"
+        : "Select a condition candidate first"
     );
     setDisabled(
       "btnApprovePlan",
@@ -254,8 +275,152 @@
       hasEncounter ? "Save encounter to this device" : "Start an encounter first"
     );
 
+    updateStageAvailability(hasSymptoms, hasImpression, hasPlan, approved);
     updatePatientContext();
+    updatePatientSummaryCard();
     refreshEncounterCards();
+    refreshRecentPatients();
+    updateHistoryCompletion();
+  }
+
+  function updateStageAvailability(hasSymptoms, hasImpression, hasPlan, approved) {
+    const gates = {
+      history: { enabled: true, reason: "" },
+      examination: { enabled: true, reason: "" },
+      assessment: {
+        enabled: hasSymptoms,
+        reason: hasSymptoms ? "" : "Confirm at least one symptom in History first",
+      },
+      plan: {
+        enabled: hasImpression,
+        reason: hasImpression ? "" : "Select or enter a working impression in Assessment first",
+      },
+      summary: {
+        enabled: approved || hasPlan,
+        reason: approved || hasPlan ? "" : "Draft or approve a plan first",
+      },
+    };
+
+    document.querySelectorAll(".stage-tab").forEach(function (tab) {
+      const stage = tab.getAttribute("data-stage");
+      const gate = gates[stage] || { enabled: true, reason: "" };
+      tab.disabled = !gate.enabled;
+      tab.title = gate.enabled
+        ? stage.charAt(0).toUpperCase() + stage.slice(1)
+        : gate.reason;
+    });
+
+    if ($("stageSelect")) {
+      Array.prototype.forEach.call($("stageSelect").options, function (opt) {
+        const gate = gates[opt.value] || { enabled: true };
+        opt.disabled = !gate.enabled;
+      });
+    }
+
+    // Progress dots
+    setProgressDot("history", !!getVal("pc").trim() || confirmedSymptoms().length > 0);
+    setProgressDot(
+      "examination",
+      !!(getVal("generalExam").trim() || getVal("bp").trim() || getVal("pulse").trim())
+    );
+    setProgressDot("assessment", hasImpression || state.conditionCandidates.length > 0);
+    setProgressDot("plan", hasPlan);
+    setProgressDot("summary", approved);
+  }
+
+  function setProgressDot(stage, done) {
+    document.querySelectorAll('[data-progress="' + stage + '"]').forEach(function (el) {
+      el.classList.toggle("done", !!done);
+    });
+  }
+
+  function updateHistoryCompletion() {
+    setCompleteDot("pc", !!getVal("pc").trim());
+    setCompleteDot("symptoms", confirmedSymptoms().length > 0);
+    setCompleteDot(
+      "questions",
+      state.questionAnswers.some(function (q) {
+        return q.answer && q.answer !== "skipped";
+      })
+    );
+    setCompleteDot("hpc", !!(getVal("hpc").trim() || getVal("odq").trim()));
+    setCompleteDot("background", !!getVal("pastMedicalSurgicalHistory").trim());
+    setCompleteDot("meds", !!(getVal("drugHx").trim() || getVal("allergyHx").trim()));
+    setCompleteDot("family", !!(getVal("familyHx").trim() || getVal("socialHx").trim()));
+    setCompleteDot("ros", !!getVal("ros").trim());
+  }
+
+  function setCompleteDot(key, done) {
+    document.querySelectorAll('[data-complete="' + key + '"]').forEach(function (el) {
+      el.classList.toggle("done", !!done);
+    });
+  }
+
+  function patientDemographics(p) {
+    const sex = p.sex
+      ? p.sex.charAt(0).toUpperCase() + p.sex.slice(1)
+      : "";
+    const ageBit = p.age
+      ? p.age + " years"
+      : p.dob
+        ? "DOB " + p.dob
+        : "Age unknown";
+    return [sex, ageBit].filter(Boolean).join(", ");
+  }
+
+  function latestAllergyNote(patientId) {
+    const encounters = Store.encounterStore.getByPatientId(patientId);
+    for (let i = 0; i < encounters.length; i++) {
+      const hx = encounters[i].history || {};
+      if (hx.allergyHx && String(hx.allergyHx).trim()) {
+        return String(hx.allergyHx).trim();
+      }
+    }
+    return "";
+  }
+
+  function updatePatientSummaryCard() {
+    const card = $("patientSummaryCard");
+    if (!card) return;
+    if (!state.patientId) {
+      card.innerHTML =
+        '<p class="muted">Select or create a patient to see a summary here.</p>';
+      return;
+    }
+    const p = Store.patientStore.getById(state.patientId) || readPatientFromForm();
+    const encounters = Store.encounterStore.getByPatientId(state.patientId);
+    const last = encounters.length
+      ? encounters[0].updatedAt || encounters[0].createdAt
+      : null;
+    const allergy = latestAllergyNote(state.patientId);
+    card.innerHTML =
+      '<p class="ps-name">' +
+      escapeHtml(p.name || "Unnamed") +
+      "</p>" +
+      '<p class="ps-row">' +
+      escapeHtml(p.localPatientId ? "ID: " + p.localPatientId : "No local ID") +
+      "</p>" +
+      '<p class="ps-row">' +
+      escapeHtml(patientDemographics(p)) +
+      "</p>" +
+      (p.phone
+        ? '<p class="ps-row">Phone: ' + escapeHtml(p.phone) + "</p>"
+        : "") +
+      '<p class="ps-muted">' +
+      escapeHtml(
+        last
+          ? "Last encounter: " + formatTime(last)
+          : "No encounters yet"
+      ) +
+      "</p>" +
+      '<p class="ps-muted">' +
+      encounters.length +
+      " previous encounter" +
+      (encounters.length === 1 ? "" : "s") +
+      "</p>" +
+      (allergy
+        ? '<p class="ps-allergy">Allergies: ' + escapeHtml(allergy) + "</p>"
+        : '<p class="ps-muted">Allergies: none recorded</p>');
   }
 
   function updatePatientContext() {
@@ -267,21 +432,69 @@
       return;
     }
     const p = Store.patientStore.getById(state.patientId) || readPatientFromForm();
-    const ageBit = p.dob
-      ? "DOB " + p.dob + (p.age ? " · age " + p.age : "")
-      : p.age
-        ? "Estimated age " + p.age
-        : "Age unknown";
-    el.className = "patient-context";
+    const encounters = Store.encounterStore.getByPatientId(state.patientId);
+    const allergy = latestAllergyNote(state.patientId);
+    el.className = "patient-context patient-summary-inline";
     el.innerHTML =
       "<strong>" +
       escapeHtml(p.name || "Unnamed") +
-      "</strong> · " +
+      "</strong><br>" +
       escapeHtml(
-        [p.localPatientId && "ID " + p.localPatientId, ageBit, p.sex, p.phone]
+        [
+          p.localPatientId && "ID: " + p.localPatientId,
+          patientDemographics(p),
+          p.phone && "Phone: " + p.phone,
+          encounters.length +
+            " previous encounter" +
+            (encounters.length === 1 ? "" : "s"),
+        ]
           .filter(Boolean)
           .join(" · ")
-      );
+      ) +
+      (allergy
+        ? "<br><span class=\"ps-allergy\" style=\"display:inline-block;margin-top:0.35rem\">Allergies: " +
+          escapeHtml(allergy) +
+          "</span>"
+        : "");
+  }
+
+  function refreshRecentPatients() {
+    const box = $("recentPatients");
+    if (!box) return;
+    const all = Store.patientStore.getAll().slice();
+    all.sort(function (a, b) {
+      return String(b.updatedAt || "").localeCompare(String(a.updatedAt || ""));
+    });
+    const recent = all.slice(0, 8);
+    if (!recent.length) {
+      box.innerHTML = '<p class="muted">No recent patients yet.</p>';
+      return;
+    }
+    box.innerHTML = "";
+    recent.forEach(function (p) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "recent-item";
+      const encCount = Store.encounterStore.getByPatientId(p.id).length;
+      btn.innerHTML =
+        "<strong>" +
+        escapeHtml(p.name || "Unnamed") +
+        "</strong><span>" +
+        escapeHtml(
+          [
+            p.localPatientId && "ID " + p.localPatientId,
+            patientDemographics(p),
+            encCount + " encounter" + (encCount === 1 ? "" : "s"),
+          ]
+            .filter(Boolean)
+            .join(" · ")
+        ) +
+        "</span>";
+      btn.addEventListener("click", function () {
+        selectPatient(p.id);
+      });
+      box.appendChild(btn);
+    });
   }
 
   // --- Age / DOB ---
@@ -345,8 +558,29 @@
   }
 
   // --- Stages ---
+  function canEnterStage(stage) {
+    const hasSymptoms = confirmedSymptoms().length > 0;
+    const hasImpression =
+      !!getVal("impression").trim() || !!state.selectedConditionId;
+    const hasPlan = !!getVal("planDraft").trim();
+    const approved = planIsApproved();
+    if (stage === "assessment" && !hasSymptoms) return false;
+    if (stage === "plan" && !hasImpression) return false;
+    if (stage === "summary" && !(approved || hasPlan)) return false;
+    return true;
+  }
+
   function showStage(stage) {
     if (!state.encounterStarted) return;
+    if (!canEnterStage(stage)) {
+      const reasons = {
+        assessment: "Confirm at least one symptom in History before Assessment.",
+        plan: "Select or enter a working impression before Plan.",
+        summary: "Draft or approve a plan before Summary.",
+      };
+      if (reasons[stage]) alert(reasons[stage]);
+      return;
+    }
     state.stage = stage;
     document.querySelectorAll(".stage-tab").forEach(function (tab) {
       tab.classList.toggle("active", tab.getAttribute("data-stage") === stage);
@@ -358,6 +592,7 @@
       );
     });
     if ($("stageSelect")) $("stageSelect").value = stage;
+    updateHistoryCompletion();
   }
 
   // --- Patient search ---
@@ -367,22 +602,31 @@
     return list[0].updatedAt || list[0].createdAt || "";
   }
 
-  function renderSearchResults(patients) {
+  function renderSearchResults(patients, query) {
     const box = $("searchResults");
     if (!patients.length) {
-      box.innerHTML = '<p class="muted">No matching patients.</p>';
+      box.innerHTML =
+        '<p class="search-empty">No matching patients. Try another name, ID, or phone — or create a new patient.</p>';
       return;
     }
     box.innerHTML = "";
+    const qNorm = normalize(query || "");
     patients.forEach(function (p) {
       const last = lastEncounterDate(p.id);
+      const encCount = Store.encounterStore.getByPatientId(p.id).length;
+      const exact =
+        qNorm &&
+        (normalize(p.name) === qNorm ||
+          normalize(p.localPatientId) === qNorm ||
+          normalize(p.phone) === qNorm);
       const row = document.createElement("button");
       row.type = "button";
       row.className = "search-result";
       row.setAttribute("role", "option");
       row.innerHTML =
-        "<div class=\"sr-name\">" +
+        "<div><div class=\"sr-name\">" +
         escapeHtml(p.name || "Unnamed") +
+        (exact ? ' <span class="tag-confirmed">Exact match</span>' : "") +
         "</div>" +
         "<div class=\"sr-meta\">" +
         escapeHtml(
@@ -392,11 +636,13 @@
             p.sex,
             p.phone,
             last ? "Last encounter " + formatTime(last) : "No encounters",
+            encCount + " encounter" + (encCount === 1 ? "" : "s"),
           ]
             .filter(Boolean)
             .join(" · ")
         ) +
-        "</div>";
+        "</div></div>" +
+        '<span class="sr-action">Open</span>';
       row.addEventListener("click", function () {
         selectPatient(p.id);
         box.innerHTML = "";
@@ -408,8 +654,14 @@
 
   function runSearch() {
     const q = getVal("searchQuery");
+    const box = $("searchResults");
+    if (!q.trim()) {
+      box.innerHTML = "";
+      return;
+    }
+    box.innerHTML = '<p class="search-loading">Searching…</p>';
     const results = Store.patientStore.search(q);
-    renderSearchResults(results);
+    renderSearchResults(results, q);
   }
 
   function selectPatient(id) {
@@ -471,35 +723,49 @@
 
     empty.classList.add("hidden");
     cards.classList.remove("hidden");
-    cards.innerHTML = "";
+    let html =
+      '<table class="encounter-table" role="table"><thead><tr>' +
+      "<th>Date</th><th>Unit</th><th>Complaint</th><th>Working diagnosis</th><th>Status</th><th>Modified</th><th></th>" +
+      "</tr></thead><tbody>";
     encounters.forEach(function (e) {
-      const card = document.createElement("div");
-      card.className = "encounter-card";
-      card.setAttribute("role", "listitem");
-      const when = e.updatedAt || e.createdAt;
-      const impression = e.impression || "No working impression yet";
-      card.innerHTML =
-        "<div><div class=\"encounter-card-title\">" +
-        escapeHtml((e.presentingComplaint || "Encounter").slice(0, 80)) +
-        "</div><div class=\"encounter-card-meta\">" +
-        escapeHtml(
-          [
-            when ? formatTime(when) : null,
-            e.unit || null,
-            e.clinicianName ? "Staff: " + e.clinicianName : null,
-            "Status: " + (e.status || "draft"),
-          ]
-            .filter(Boolean)
-            .join(" · ")
-        ) +
-        "<br>Working impression: " +
-        escapeHtml(impression) +
-        "</div></div>" +
-        '<button type="button" class="btn-secondary open-encounter" data-id="' +
+      const when = e.createdAt || e.updatedAt;
+      const modified = e.updatedAt || e.createdAt;
+      const impression = e.impression || "—";
+      const rawStatus =
+        (e.plan && e.plan.approvalStatus) || e.status || "draft";
+      const planStatus =
+        rawStatus === "approved"
+          ? "Approved"
+          : rawStatus === "draft"
+            ? "Draft"
+            : String(rawStatus);
+      html +=
+        "<tr role=\"listitem\">" +
+        '<td class="enc-date">' +
+        escapeHtml(when ? formatTime(when) : "—") +
+        "</td>" +
+        "<td>" +
+        escapeHtml(e.unit || "—") +
+        "</td>" +
+        '<td class="enc-complaint">' +
+        escapeHtml((e.presentingComplaint || "Encounter").slice(0, 60)) +
+        "</td>" +
+        "<td>" +
+        escapeHtml(String(impression).slice(0, 60)) +
+        "</td>" +
+        '<td class="enc-status">' +
+        escapeHtml(planStatus) +
+        "</td>" +
+        '<td class="enc-modified">' +
+        escapeHtml(modified ? formatTime(modified) : "—") +
+        "</td>" +
+        '<td><button type="button" class="btn-secondary open-encounter" data-id="' +
         escapeHtml(e.id) +
-        '">Open encounter</button>';
-      cards.appendChild(card);
+        '">Open</button></td>' +
+        "</tr>";
     });
+    html += "</tbody></table>";
+    cards.innerHTML = html;
     cards.querySelectorAll(".open-encounter").forEach(function (btn) {
       btn.addEventListener("click", function () {
         openEncounter(btn.getAttribute("data-id"));
@@ -870,9 +1136,16 @@
     const el = $("planStatus");
     el.dataset.status = status;
     el.dataset.approvedAt = approvedAt || "";
+    const tag =
+      status === "approved"
+        ? " · Approved"
+        : status === "draft"
+          ? " · Pending review"
+          : "";
     el.textContent =
       "Plan status: " +
       status +
+      tag +
       (approvedAt ? " · " + formatTime(approvedAt) : "");
   }
 
@@ -1228,11 +1501,19 @@
       history: { allergyHx: getVal("allergyHx") },
     };
     state.conditionCandidates = Knowledge.analyzeDifferentials(ctx);
+    const generatedAt = Store.nowIso();
+    state.conditionCandidates.forEach(function (c) {
+      c.generationSource = "system";
+      c.generatedAt = generatedAt;
+      c.clinicianAction = c.clinicianAction || null;
+      c.status = c.status || "suggested";
+    });
     renderDifferentials();
     refreshAlerts();
     buildSummary();
     showStage("assessment");
     markDirty();
+    updateActionGates();
   }
 
   function renderDifferentials() {
@@ -1246,8 +1527,12 @@
       '<p class="ds-banner">Decision support — clinician verification required. These are condition candidates, not diagnoses.</p>';
     state.conditionCandidates.forEach(function (c) {
       const div = document.createElement("div");
+      const isSelected = state.selectedConditionId === c.id;
+      const isRejected = c.status === "rejected";
       div.className =
-        "diff-item" + (state.selectedConditionId === c.id ? " selected" : "");
+        "diff-item" +
+        (isSelected ? " selected" : "") +
+        (isRejected ? " rejected" : "");
       const support = (c.supportingFindings || [])
         .map(function (id) {
           return Knowledge.labelForSymptom(id);
@@ -1264,10 +1549,14 @@
           return Knowledge.labelForSymptom(id);
         })
         .join(", ");
-      const statusTag =
-        c.status === "selected"
-          ? '<span class="tag-confirmed">Selected by clinician</span>'
-          : '<span class="tag-system">Suggested by system</span>';
+      let statusTag = '<span class="tag-system">Suggested by system</span>';
+      if (isSelected) {
+        statusTag = '<span class="tag-confirmed">Accepted by clinician</span>';
+      } else if (isRejected) {
+        statusTag = '<span class="tag-rejected">Rejected</span>';
+      } else if (c.status === "edited") {
+        statusTag = '<span class="tag-clinician">Edited by clinician</span>';
+      }
       div.innerHTML =
         "<header><strong>#" +
         c.rank +
@@ -1287,16 +1576,27 @@
         "<p><em>Still missing:</em> " +
         escapeHtml(missing || "—") +
         "</p>" +
+        '<div class="diff-actions">' +
         '<button type="button" class="btn-secondary select-cond" data-id="' +
         escapeHtml(c.id) +
-        '">Select as working impression</button>';
+        '">Accept as working impression</button>' +
+        '<button type="button" class="btn-secondary reject-cond" data-id="' +
+        escapeHtml(c.id) +
+        '">Reject</button>' +
+        "</div>";
       panel.appendChild(div);
     });
     panel.querySelectorAll(".select-cond").forEach(function (btn) {
       btn.addEventListener("click", function () {
         state.selectedConditionId = btn.getAttribute("data-id");
         state.conditionCandidates.forEach(function (c) {
-          c.status = c.id === state.selectedConditionId ? "selected" : "suggested";
+          if (c.id === state.selectedConditionId) {
+            c.status = "selected";
+            c.clinicianAction = "accepted";
+            c.actionAt = Store.nowIso();
+          } else if (c.status === "selected") {
+            c.status = "suggested";
+          }
         });
         const selected = state.conditionCandidates.find(function (c) {
           return c.id === state.selectedConditionId;
@@ -1309,6 +1609,25 @@
         }
         renderDifferentials();
         markDirty();
+        updateActionGates();
+      });
+    });
+    panel.querySelectorAll(".reject-cond").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        const id = btn.getAttribute("data-id");
+        state.conditionCandidates.forEach(function (c) {
+          if (c.id === id) {
+            c.status = "rejected";
+            c.clinicianAction = "rejected";
+            c.actionAt = Store.nowIso();
+          }
+        });
+        if (state.selectedConditionId === id) {
+          state.selectedConditionId = null;
+        }
+        renderDifferentials();
+        markDirty();
+        updateActionGates();
       });
     });
   }
@@ -1323,6 +1642,7 @@
     setVal("planDraft", items.join("\n"));
     setPlanStatus("draft", null);
     markDirty();
+    updateActionGates();
   }
 
   function approvePlan() {
@@ -1339,6 +1659,7 @@
     const at = Store.nowIso();
     setPlanStatus("approved", at);
     markDirty();
+    updateActionGates();
   }
 
   function buildSummary() {
@@ -1424,6 +1745,10 @@
     }
     s += "CONDITION CANDIDATES (suggested by system — not a diagnosis)\n";
     state.conditionCandidates.forEach(function (c) {
+      let label = "suggested";
+      if (c.status === "selected") label = "ACCEPTED BY CLINICIAN";
+      else if (c.status === "rejected") label = "REJECTED";
+      else if (c.status === "edited") label = "EDITED BY CLINICIAN";
       s +=
         "#" +
         c.rank +
@@ -1431,11 +1756,11 @@
         c.label +
         " (score " +
         c.score +
-        ")" +
-        (c.status === "selected" ? " [SELECTED BY CLINICIAN]" : " [suggested]") +
-        "\n";
+        ") [" +
+        label +
+        "]\n";
     });
-    s += "\nWORKING IMPRESSION (clinician): " + getVal("impression") + "\n";
+    s += "\nWORKING IMPRESSION (clinician-approved): " + getVal("impression") + "\n";
     s +=
       "PLAN (" +
       ($("planStatus").dataset.status || "draft") +
@@ -1446,7 +1771,15 @@
     if (getVal("planEdits")) {
       s += "[Edited by clinician]\n" + getVal("planEdits") + "\n";
     }
-    if (getVal("planApprover")) s += "Approved by: " + getVal("planApprover") + "\n";
+    if (getVal("planApprover")) {
+      s +=
+        "[Approved] Approved by: " +
+        getVal("planApprover") +
+        ($("planStatus").dataset.approvedAt
+          ? " at " + formatTime($("planStatus").dataset.approvedAt)
+          : "") +
+        "\n";
+    }
     setVal("summary", s);
   }
 
@@ -1618,6 +1951,33 @@
       }
     });
 
+    if ($("btnFocusSearch")) {
+      $("btnFocusSearch").addEventListener("click", function () {
+        $("searchQuery").focus();
+      });
+    }
+    if ($("btnCreateFromEmpty")) {
+      $("btnCreateFromEmpty").addEventListener("click", function () {
+        $("btnNewPatient").click();
+      });
+    }
+    if ($("btnCancelPatient")) {
+      $("btnCancelPatient").addEventListener("click", function () {
+        if (state.patientId) {
+          const p = Store.patientStore.getById(state.patientId);
+          if (p) fillPatientForm(p);
+          state.dirty = false;
+          updateSaveStatus();
+          updateActionGates();
+        } else {
+          clearPatientForm();
+          state.editingNewPatient = false;
+          updateActionGates();
+          updateSaveStatus();
+        }
+      });
+    }
+
     if ($("btnOnboardingHelp")) {
       $("btnOnboardingHelp").addEventListener("click", function () {
         dismissOnboarding();
@@ -1780,17 +2140,28 @@
 
     document.querySelectorAll(".stage-tab").forEach(function (tab) {
       tab.addEventListener("click", function () {
+        if (tab.disabled) return;
         showStage(tab.getAttribute("data-stage"));
       });
     });
     if ($("stageSelect")) {
       $("stageSelect").addEventListener("change", function () {
-        showStage(getVal("stageSelect"));
+        const next = getVal("stageSelect");
+        if (!canEnterStage(next)) {
+          $("stageSelect").value = state.stage;
+          return;
+        }
+        showStage(next);
       });
     }
     document.querySelectorAll(".stage-next").forEach(function (btn) {
       btn.addEventListener("click", function () {
-        showStage(btn.getAttribute("data-next"));
+        const next = btn.getAttribute("data-next");
+        if (!canEnterStage(next)) {
+          showStage(next); // will alert
+          return;
+        }
+        showStage(next);
       });
     });
     document.querySelectorAll(".stage-prev").forEach(function (btn) {
