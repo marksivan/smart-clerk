@@ -6,7 +6,7 @@
   "use strict";
 
   const knowledge = {
-    version: "demo-1.0.0",
+    version: "demo-1.1.0",
     disclaimer:
       "Decision support — clinician verification required. Sample content for demonstration only.",
 
@@ -16,16 +16,23 @@
       { id: "sob", label: "Shortness of breath", aliases: ["dyspnea", "short of breath", "breathlessness"] },
       { id: "chest_pain", label: "Chest pain", aliases: ["pleuritic pain", "chest discomfort"] },
       { id: "sputum", label: "Sputum production", aliases: ["phlegm", "productive cough"] },
-      { id: "hemoptysis", label: "Hemoptysis", aliases: ["coughing blood", "blood in sputum"] },
+      { id: "hemoptysis", label: "Hemoptysis", aliases: ["coughing blood", "blood in sputum", "blood when coughing"] },
       { id: "chills", label: "Chills", aliases: ["rigors"] },
       { id: "wheeze", label: "Wheeze", aliases: ["wheezing"] },
       { id: "abdominal_pain", label: "Abdominal pain", aliases: ["belly pain", "stomach pain"] },
       { id: "vomiting", label: "Vomiting", aliases: ["emesis"] },
       { id: "dysuria", label: "Dysuria", aliases: ["painful urination", "burning urine"] },
-      { id: "headache", label: "Headache", aliases: [] },
-      { id: "diarrhea", label: "Diarrhea", aliases: ["loose stools"] },
+      { id: "headache", label: "Headache", aliases: ["head pain", "migraine"] },
+      { id: "diarrhea", label: "Diarrhea", aliases: ["loose stools", "diarrhoea", "watery stool"] },
       { id: "confusion", label: "Confusion", aliases: ["altered mental status"] },
       { id: "weight_loss", label: "Weight loss", aliases: [] },
+      { id: "insomnia", label: "Insomnia / sleep difficulty", aliases: ["sleeping", "can't sleep", "cannot sleep", "poor sleep", "sleeplessness", "difficulty sleeping", "trouble sleeping"] },
+      { id: "fatigue", label: "Fatigue", aliases: ["tiredness", "weakness", "malaise"] },
+      { id: "nausea", label: "Nausea", aliases: ["feeling sick", "queasy"] },
+      { id: "dizziness", label: "Dizziness", aliases: ["lightheaded", "vertigo"] },
+      { id: "neck_stiffness", label: "Neck stiffness", aliases: ["stiff neck", "nuchal rigidity"] },
+      { id: "photophobia", label: "Photophobia", aliases: ["light sensitivity", "sensitive to light"] },
+      { id: "night_sweats", label: "Night sweats", aliases: ["sweating at night"] },
     ],
 
     questions: [
@@ -49,7 +56,7 @@
       },
       {
         id: "q_sob",
-        symptomIds: ["cough", "fever", "chest_pain"],
+        symptomIds: ["cough", "fever", "chest_pain", "sob", "hemoptysis"],
         text: "Is there shortness of breath at rest or on exertion?",
         category: "associated",
       },
@@ -61,38 +68,38 @@
       },
       {
         id: "q_chills",
-        symptomIds: ["fever", "cough"],
+        symptomIds: ["fever", "cough", "headache"],
         text: "Are there chills or rigors?",
         category: "associated",
       },
       {
         id: "q_tb_contact",
-        symptomIds: ["cough", "fever", "weight_loss"],
+        symptomIds: ["cough", "fever", "weight_loss", "hemoptysis", "night_sweats"],
         text: "Any recent contact with someone who has tuberculosis, or known TB exposure?",
         category: "risk",
       },
       {
         id: "q_smoking",
-        symptomIds: ["cough", "sob", "wheeze"],
+        symptomIds: ["cough", "sob", "wheeze", "hemoptysis"],
         text: "Does the patient smoke or have a smoking history?",
         category: "risk",
       },
       {
         id: "q_recent_abx",
-        symptomIds: ["cough", "fever"],
+        symptomIds: ["cough", "fever", "diarrhea"],
         text: "Any recent antibiotic use or hospitalization?",
         category: "risk",
       },
       {
         id: "q_pregnancy",
-        symptomIds: ["fever", "cough", "abdominal_pain", "vomiting"],
+        symptomIds: ["fever", "cough", "abdominal_pain", "vomiting", "diarrhea", "headache", "nausea"],
         text: "If applicable: is the patient pregnant?",
         category: "risk",
         sex: "female",
       },
       {
         id: "q_confusion",
-        symptomIds: ["fever", "cough", "sob"],
+        symptomIds: ["fever", "cough", "sob", "headache", "confusion"],
         text: "Any confusion or altered consciousness?",
         category: "red_flag",
       },
@@ -113,6 +120,144 @@
         symptomIds: ["diarrhea"],
         text: "Any blood in stool, severe dehydration, or inability to keep fluids down?",
         category: "red_flag",
+      },
+      {
+        id: "q_diarrhea_onset",
+        symptomIds: ["diarrhea"],
+        text: "When did the diarrhea begin? How many stools per day?",
+        category: "onset",
+      },
+      {
+        id: "q_diarrhea_character",
+        symptomIds: ["diarrhea"],
+        text: "Are the stools watery, mucoid, or bloody? Any foul smell?",
+        category: "character",
+      },
+      {
+        id: "q_diarrhea_associated",
+        symptomIds: ["diarrhea"],
+        text: "Any associated fever, abdominal pain, vomiting, or travel history?",
+        category: "associated",
+      },
+      {
+        id: "q_diarrhea_intake",
+        symptomIds: ["diarrhea", "vomiting"],
+        text: "Is the patient able to take oral fluids? Any reduced urine output?",
+        category: "severity",
+      },
+      {
+        id: "q_headache_onset",
+        symptomIds: ["headache"],
+        text: "When did the headache begin? Sudden or gradual onset?",
+        category: "onset",
+      },
+      {
+        id: "q_headache_character",
+        symptomIds: ["headache"],
+        text: "Where is the headache located? Is it throbbing, pressure-like, or sharp?",
+        category: "character",
+      },
+      {
+        id: "q_headache_severity",
+        symptomIds: ["headache"],
+        text: "How severe is the headache (mild / moderate / severe)? Any worst-ever headache?",
+        category: "severity",
+      },
+      {
+        id: "q_headache_associated",
+        symptomIds: ["headache"],
+        text: "Any nausea, vomiting, visual changes, or photophobia with the headache?",
+        category: "associated",
+      },
+      {
+        id: "q_headache_neck",
+        symptomIds: ["headache", "neck_stiffness", "fever"],
+        text: "Any neck stiffness, fever, or rash?",
+        category: "red_flag",
+      },
+      {
+        id: "q_headache_neuro",
+        symptomIds: ["headache"],
+        text: "Any weakness, numbness, speech difficulty, seizure, or loss of consciousness?",
+        category: "red_flag",
+      },
+      {
+        id: "q_hemoptysis_amount",
+        symptomIds: ["hemoptysis"],
+        text: "How much blood was coughed up (streaks, teaspoon, or larger volume)?",
+        category: "severity",
+      },
+      {
+        id: "q_hemoptysis_onset",
+        symptomIds: ["hemoptysis"],
+        text: "When did coughing blood begin? First episode or recurrent?",
+        category: "onset",
+      },
+      {
+        id: "q_hemoptysis_associated",
+        symptomIds: ["hemoptysis"],
+        text: "Any fever, night sweats, weight loss, chest pain, or shortness of breath with the hemoptysis?",
+        category: "associated",
+      },
+      {
+        id: "q_hemoptysis_source",
+        symptomIds: ["hemoptysis"],
+        text: "Is the blood definitely from the chest/airway, or could it be from the nose, mouth, or stomach?",
+        category: "character",
+      },
+      {
+        id: "q_hemoptysis_risk",
+        symptomIds: ["hemoptysis"],
+        text: "Any known lung disease, anticoagulation, recent procedure, or TB exposure?",
+        category: "risk",
+      },
+      {
+        id: "q_hemoptysis_redflag",
+        symptomIds: ["hemoptysis"],
+        text: "Any large-volume bleeding, dizziness, or difficulty breathing right now?",
+        category: "red_flag",
+      },
+      {
+        id: "q_sleep_onset",
+        symptomIds: ["insomnia"],
+        text: "What sleep problem is present — difficulty falling asleep, staying asleep, or early waking?",
+        category: "onset",
+      },
+      {
+        id: "q_sleep_duration",
+        symptomIds: ["insomnia"],
+        text: "How long has the sleep difficulty lasted? How many hours of sleep per night?",
+        category: "character",
+      },
+      {
+        id: "q_sleep_associated",
+        symptomIds: ["insomnia", "fatigue"],
+        text: "Any snoring, witnessed apneas, daytime sleepiness, mood change, or stimulant/caffeine use?",
+        category: "associated",
+      },
+      {
+        id: "q_sleep_pain",
+        symptomIds: ["insomnia", "headache", "chest_pain", "abdominal_pain"],
+        text: "Is pain, breathlessness, nocturia, or other symptoms waking the patient at night?",
+        category: "associated",
+      },
+      {
+        id: "q_fatigue_onset",
+        symptomIds: ["fatigue"],
+        text: "When did the fatigue begin? Is it progressive?",
+        category: "onset",
+      },
+      {
+        id: "q_nausea_onset",
+        symptomIds: ["nausea", "vomiting"],
+        text: "When did nausea begin? Any relation to meals?",
+        category: "onset",
+      },
+      {
+        id: "q_dizziness_onset",
+        symptomIds: ["dizziness"],
+        text: "Is the dizziness spinning (vertigo) or lightheaded? Any syncope?",
+        category: "character",
       },
     ],
 
@@ -322,41 +467,65 @@
     const text = normalizeText(freeText);
     if (!text) return [];
     const matches = [];
+    function pushMatch(s) {
+      if (!matches.some(function (m) {
+        return m.id === s.id;
+      })) {
+        matches.push({ id: s.id, label: s.label });
+      }
+    }
     knowledge.symptoms.forEach(function (s) {
       const terms = [s.label].concat(s.aliases || []).map(normalizeText);
       terms.forEach(function (term) {
         if (!term) return;
-        if (text.indexOf(term) !== -1 || term.indexOf(text) === 0 || text.indexOf(term.split(" ")[0]) !== -1) {
-          if (!matches.some(function (m) { return m.id === s.id; })) {
-            matches.push({ id: s.id, label: s.label });
-          }
+        if (
+          text === term ||
+          text.indexOf(term) !== -1 ||
+          term.indexOf(text) === 0
+        ) {
+          pushMatch(s);
         }
       });
     });
     // Partial prefix match for typing
-    if (text.length >= 3) {
+    if (text.length >= 3 && !matches.length) {
       knowledge.symptoms.forEach(function (s) {
         const label = normalizeText(s.label);
-        if (label.indexOf(text) === 0 || text.indexOf(label.slice(0, text.length)) === 0) {
-          if (!matches.some(function (m) { return m.id === s.id; })) {
-            matches.push({ id: s.id, label: s.label });
-          }
-        }
+        if (label.indexOf(text) === 0) pushMatch(s);
         (s.aliases || []).forEach(function (a) {
           const al = normalizeText(a);
-          if (al.indexOf(text) === 0) {
-            if (!matches.some(function (m) { return m.id === s.id; })) {
-              matches.push({ id: s.id, label: s.label });
-            }
-          }
+          if (al.indexOf(text) === 0) pushMatch(s);
         });
       });
     }
     return matches;
   }
 
+  /**
+   * Resolve a free-text label to a known symptom id when possible.
+   */
+  function resolveSymptomId(labelOrId) {
+    const raw = normalizeText(labelOrId);
+    if (!raw) return null;
+    const byId = knowledge.symptoms.find(function (s) {
+      return s.id === raw || normalizeText(s.id) === raw;
+    });
+    if (byId) return byId.id;
+    const exact = knowledge.symptoms.find(function (s) {
+      const terms = [s.label].concat(s.aliases || []).map(normalizeText);
+      return terms.indexOf(raw) !== -1;
+    });
+    if (exact) return exact.id;
+    const suggested = suggestSymptoms(raw);
+    return suggested.length ? suggested[0].id : null;
+  }
+
   function generateQuestions(findingIds, patient) {
-    const ids = findingIds || [];
+    const ids = (findingIds || [])
+      .map(function (id) {
+        return resolveSymptomId(id) || id;
+      })
+      .filter(Boolean);
     const sex = ((patient && patient.sex) || "").toLowerCase();
     const seen = {};
     const out = [];
@@ -372,8 +541,24 @@
           questionText: q.text,
           category: q.category,
           symptomIds: q.symptomIds.slice(),
+          generationSource: "system",
         });
       }
+    });
+    // Prefer red flags first, then onset/character, then the rest
+    const order = {
+      red_flag: 0,
+      onset: 1,
+      character: 2,
+      severity: 3,
+      associated: 4,
+      risk: 5,
+      caution: 6,
+    };
+    out.sort(function (a, b) {
+      const ao = order[a.category] != null ? order[a.category] : 9;
+      const bo = order[b.category] != null ? order[b.category] : 9;
+      return ao - bo;
     });
     return out;
   }
@@ -489,6 +674,7 @@
   const api = {
     knowledge: knowledge,
     suggestSymptoms: suggestSymptoms,
+    resolveSymptomId: resolveSymptomId,
     generateQuestions: generateQuestions,
     analyzeDifferentials: analyzeDifferentials,
     evaluateRedFlags: evaluateRedFlags,
