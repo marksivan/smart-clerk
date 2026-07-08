@@ -731,11 +731,17 @@
       const when = e.createdAt || e.updatedAt;
       const modified = e.updatedAt || e.createdAt;
       const impression = e.impression || "—";
-      const planStatus =
+      const rawStatus =
         (e.plan && e.plan.approvalStatus) || e.status || "draft";
+      const planStatus =
+        rawStatus === "approved"
+          ? "Approved"
+          : rawStatus === "draft"
+            ? "Draft"
+            : String(rawStatus);
       html +=
         "<tr role=\"listitem\">" +
-        "<td>" +
+        '<td class="enc-date">' +
         escapeHtml(when ? formatTime(when) : "—") +
         "</td>" +
         "<td>" +
@@ -747,10 +753,10 @@
         "<td>" +
         escapeHtml(String(impression).slice(0, 60)) +
         "</td>" +
-        "<td>" +
+        '<td class="enc-status">' +
         escapeHtml(planStatus) +
         "</td>" +
-        "<td>" +
+        '<td class="enc-modified">' +
         escapeHtml(modified ? formatTime(modified) : "—") +
         "</td>" +
         '<td><button type="button" class="btn-secondary open-encounter" data-id="' +

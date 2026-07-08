@@ -618,6 +618,19 @@ button,
 .encounter-table .enc-complaint {
   font-weight: 700;
   color: var(--brand-deep);
+  max-width: 10rem;
+}
+
+.encounter-table .enc-status {
+  white-space: nowrap;
+  min-width: 5.5rem;
+  font-weight: 600;
+}
+
+.encounter-table .enc-date,
+.encounter-table .enc-modified {
+  white-space: nowrap;
+  font-size: 0.8rem;
 }
 
 .encounter-cards {
