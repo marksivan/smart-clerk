@@ -118,6 +118,8 @@ body {
   margin-bottom: 1rem;
   border-bottom: 1px solid var(--border);
   padding-bottom: 0;
+  position: relative;
+  z-index: 20;
 }
 
 .top-nav-btn {
@@ -130,6 +132,9 @@ body {
   padding: 0.65rem 1rem;
   cursor: pointer;
   margin-bottom: -1px;
+  position: relative;
+  z-index: 21;
+  pointer-events: auto;
 }
 
 .top-nav-btn:hover {
@@ -144,6 +149,10 @@ body {
 .page[hidden],
 .page.hidden {
   display: none !important;
+}
+
+.page.active {
+  display: block;
 }
 
 .panel,
@@ -796,8 +805,10 @@ button,
   padding: 1rem;
 }
 
-.modal.hidden {
+.modal.hidden,
+.modal[aria-hidden="true"].hidden {
   display: none !important;
+  pointer-events: none;
 }
 
 .modal-backdrop {
