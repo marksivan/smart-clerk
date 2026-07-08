@@ -2,139 +2,315 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Clerking Assistant - Ward Version</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Smart Clerking Assistant</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div class="container">
-    <h2>Smart Clerking Assistant</h2>
-
-    <!-- Biodata -->
-    <h3>Biodata</h3>
-    <div class="row">
-      <div><input id="name" placeholder="Patient Name"></div>
-      <div><input id="age" type="number" placeholder="Age"></div>
-    </div>
-    <div class="row">
-      <div><input id="sex" placeholder="Sex"></div>
-      <div><input id="occupation" placeholder="Occupation"></div>
-    </div>
-    <input id="address" placeholder="Address">
-
-    <!-- History -->
-    <h3>History</h3>
-    <textarea id="pc" placeholder="Presenting Complaint"></textarea>
-    <textarea id="hpc" placeholder="History of Presenting Complaint"></textarea>
-    <textarea id="odq" placeholder="On Direct Questioning"></textarea>
-    <textarea id="pmsh" placeholder="Past Medical And Surgical History"></textarea>
-    <textarea id="drugHx" placeholder="Drug History"></textarea>
-    <textarea id="allergyHx" placeholder="Allergy History"></textarea>
-    <textarea id="familyHx" placeholder="Family History"></textarea>
-    <textarea id="socialHx" placeholder="Social History"></textarea>
-    <textarea id="ros" placeholder="Review of Systems"></textarea>
-
-    <!-- Physical Examination -->
-    <h3>Physical Examination</h3>
-    <button onclick="insertPhysicalTemplate()">ADD TEMPLATE-</button>
-    <textarea id="generalExam" placeholder="General Examination"></textarea>
-
-    <div class="row">
-      <div><input id="bp" placeholder="BP e.g. 120/80"></div>
-      <div><input id="pulse" placeholder="Pulse"></div>
-    </div>
-    <div class="row">
-      <div><input id="rr" placeholder="Respiratory Rate"></div>
-      <div><input id="temp" placeholder="Temperature"></div>
-    </div>
-
-    <!-- Unit -->
-    <h3>Unit</h3>
-    <select id="unit">
-      <option value="">Select Unit</option>
-      <option value="medicine">Medicine</option>
-      <option value="cardio">Cardiology</option>
-      <option value="resp">Respiratory</option>
-      <option value="obgyn">Obstetrics & Gynaecology</option>
-      <option value="cns">Neurology</option>
-    </select>
-    <div id="unitSection"></div>
-
-    <!-- Laboratory Review -->
-    <h3>Laboratory Review</h3>
-    <div class="row">
+  <div class="app">
+    <header class="app-header">
       <div>
-        <label>LFT - ALT (U/L)</label>
-        <input id="alt" placeholder="ALT">
+        <h1>Smart Clerking Assistant</h1>
+        <p class="subtitle">Admin / clinician workspace — patients do not use this app</p>
       </div>
-      <div>
-        <label>LFT - AST (U/L)</label>
-        <input id="ast" placeholder="AST">
+      <div class="header-meta">
+        <span id="saveStatus" class="save-status" aria-live="polite">Not saved yet</span>
+        <span class="badge-warn">Decision support — clinician verification required</span>
       </div>
-    </div>
+    </header>
 
-    <div class="row">
-      <div>
-        <label>RFT - Creatinine (mg/dL)</label>
-        <input id="creatinine" placeholder="Creatinine">
-      </div>
-      <div>
-        <label>RFT - Urea (mg/dL)</label>
-        <input id="urea" placeholder="Urea">
-      </div>
-    </div>
+    <aside class="privacy-banner" id="privacyBanner">
+      <p>
+        <strong>Local demo storage.</strong> Records stay in this browser only (localStorage).
+        Export a JSON backup before clearing data or changing the site URL.
+        Use fictional or de-identified data for demonstration.
+      </p>
+      <button type="button" id="dismissPrivacy" class="btn-secondary">Dismiss</button>
+    </aside>
 
-    <div class="row">
-      <div>
-        <label>FBC - Hemoglobin (g/dL)</label>
-        <input id="hb" placeholder="Hb">
-      </div>
-      <div>
-        <label>FBC - WBC (10^9/L)</label>
-        <input id="wbc" placeholder="WBC">
-      </div>
-    </div>
+    <main class="layout">
+      <!-- Patient panel -->
+      <section class="panel" id="patientPanel">
+        <h2>Patient</h2>
+        <div class="row">
+          <div>
+            <label for="searchQuery">Search</label>
+            <input id="searchQuery" placeholder="Name, local ID, phone, or DOB">
+          </div>
+          <div class="btn-row align-end">
+            <button type="button" id="btnSearch" class="btn-secondary">Search</button>
+            <button type="button" id="btnNewPatient" class="btn-primary">New patient</button>
+          </div>
+        </div>
+        <select id="patientList" aria-label="Patient list">
+          <option value="">— Select patient —</option>
+        </select>
+        <div id="duplicateWarning" class="alert-box hidden" role="alert"></div>
 
-    <div class="row">
-      <div>
-        <label>FBC - Platelets (10^9/L)</label>
-        <input id="platelets" placeholder="Platelets">
-      </div>
-      <div>
-        <label>Urine RE - Protein (mg/dL)</label>
-        <input id="urine_protein" placeholder="Protein">
-      </div>
-    </div>
+        <div class="grid-2">
+          <div>
+            <label for="name">Name *</label>
+            <input id="name" autocomplete="off">
+          </div>
+          <div>
+            <label for="localPatientId">Local patient ID</label>
+            <input id="localPatientId" autocomplete="off">
+          </div>
+          <div>
+            <label for="age">Age</label>
+            <input id="age" type="number" min="0" max="130">
+          </div>
+          <div>
+            <label for="dob">Date of birth</label>
+            <input id="dob" type="date">
+          </div>
+          <div>
+            <label for="sex">Sex</label>
+            <select id="sex">
+              <option value="">—</option>
+              <option value="female">Female</option>
+              <option value="male">Male</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div>
+            <label for="phone">Phone</label>
+            <input id="phone" autocomplete="off">
+          </div>
+          <div>
+            <label for="occupation">Occupation</label>
+            <input id="occupation">
+          </div>
+          <div>
+            <label for="address">Address</label>
+            <input id="address">
+          </div>
+        </div>
+        <div class="btn-row">
+          <button type="button" id="btnSavePatient" class="btn-primary">Save patient</button>
+          <button type="button" id="btnNewEncounter" class="btn-secondary">New encounter</button>
+        </div>
+        <div>
+          <label for="encounterList">Encounters for this patient</label>
+          <select id="encounterList" aria-label="Encounter list">
+            <option value="">— No encounters —</option>
+          </select>
+        </div>
+      </section>
 
-    <label>Urine RE - Glucose (mg/dL)</label>
-    <input id="urine_glucose" placeholder="Glucose">
+      <!-- Encounter documentation -->
+      <section class="panel" id="encounterPanel">
+        <h2>Encounter</h2>
+        <div class="grid-2">
+          <div>
+            <label for="clinicianName">Clinician / staff name</label>
+            <input id="clinicianName">
+          </div>
+          <div>
+            <label for="unit">Unit</label>
+            <select id="unit">
+              <option value="">Select unit</option>
+              <option value="medicine">Medicine</option>
+              <option value="cardio">Cardiology</option>
+              <option value="resp">Respiratory</option>
+              <option value="obgyn">Obstetrics &amp; Gynaecology</option>
+              <option value="cns">Neurology</option>
+            </select>
+          </div>
+        </div>
 
-    <!-- Impression & Plan -->
-    <h3>Impression / Diagnosis</h3>
-    <textarea id="impression" placeholder="Enter your impression / diagnosis"></textarea>
+        <h3>Presenting complaint &amp; symptoms</h3>
+        <label for="pc">Presenting complaint (free text)</label>
+        <textarea id="pc" rows="2" placeholder="e.g. Cough and fever for three days"></textarea>
+        <div class="row">
+          <div>
+            <label for="symptomInput">Add / confirm symptom</label>
+            <input id="symptomInput" placeholder="Type to autocomplete…" list="symptomSuggestions">
+            <datalist id="symptomSuggestions"></datalist>
+          </div>
+          <div class="btn-row align-end">
+            <button type="button" id="btnAddSymptom" class="btn-secondary">Add symptom</button>
+          </div>
+        </div>
+        <div id="symptomChips" class="chip-list" aria-live="polite"></div>
 
-    <h3>Plan</h3>
-    <textarea id="plan" placeholder="Plan will be suggested here" readonly></textarea>
+        <div class="btn-row">
+          <button type="button" id="btnGenerateQuestions" class="btn-primary">Generate questions</button>
+          <button type="button" id="btnAnalyze" class="btn-primary">Analyze</button>
+        </div>
+        <p class="hint">Generated questions and differentials are decision support — verify with the patient and clinician judgment.</p>
 
-    <!-- Controls -->
-    <div class="row">
-      <div><button onclick="analyze()">Analyze & Generate Summary</button></div>
-      <div><button onclick="savePatient()">💾 Save Patient</button></div>
-    </div>
+        <h3>Generated questions</h3>
+        <div id="questionsPanel" class="questions-panel">
+          <p class="muted">No questions yet. Enter symptoms and press Generate questions.</p>
+        </div>
 
-    <div class="row">
-      <div><button onclick="loadPatients()">📂 Load Patients</button></div>
-      <div><button onclick="clearPatients()">🗑 Clear All Patients</button></div>
-    </div>
+        <h3>History</h3>
+        <label for="hpc">History of presenting complaint</label>
+        <textarea id="hpc" rows="2"></textarea>
+        <label for="odq">On direct questioning</label>
+        <textarea id="odq" rows="2"></textarea>
+        <label for="pastMedicalSurgicalHistory">Past medical &amp; surgical history</label>
+        <textarea id="pastMedicalSurgicalHistory" rows="2"></textarea>
+        <div class="grid-2">
+          <div>
+            <label for="drugHx">Drug history</label>
+            <textarea id="drugHx" rows="2"></textarea>
+          </div>
+          <div>
+            <label for="allergyHx">Allergy history</label>
+            <textarea id="allergyHx" rows="2"></textarea>
+          </div>
+          <div>
+            <label for="familyHx">Family history</label>
+            <textarea id="familyHx" rows="2"></textarea>
+          </div>
+          <div>
+            <label for="socialHx">Social history</label>
+            <textarea id="socialHx" rows="2"></textarea>
+          </div>
+        </div>
+        <label for="ros">Review of systems</label>
+        <textarea id="ros" rows="2"></textarea>
 
-    <!-- Patient dropdown -->
-    <select id="patientList" onchange="loadPatientFromList()">
-      <option value="">--Select Patient--</option>
-    </select>
+        <div id="unitSection"></div>
 
-    <p id="alert"></p>
-    <textarea id="summary"></textarea>
+        <h3>Physical examination</h3>
+        <button type="button" id="btnExamTemplate" class="btn-secondary">Insert exam template</button>
+        <label for="generalExam">General examination</label>
+        <textarea id="generalExam" rows="3"></textarea>
+        <label for="systemicExam">Systemic examination</label>
+        <textarea id="systemicExam" rows="4"></textarea>
+
+        <h3>Vitals</h3>
+        <div class="grid-4">
+          <div>
+            <label for="bp">BP</label>
+            <input id="bp" placeholder="120/80">
+          </div>
+          <div>
+            <label for="pulse">Pulse</label>
+            <input id="pulse" placeholder="bpm">
+          </div>
+          <div>
+            <label for="rr">Respiratory rate</label>
+            <input id="rr">
+          </div>
+          <div>
+            <label for="temp">Temperature</label>
+            <input id="temp" placeholder="°C">
+          </div>
+        </div>
+
+        <h3>Laboratory review</h3>
+        <div class="grid-2">
+          <div>
+            <label for="alt">LFT — ALT (U/L)</label>
+            <input id="alt">
+          </div>
+          <div>
+            <label for="ast">LFT — AST (U/L)</label>
+            <input id="ast">
+          </div>
+          <div>
+            <label for="creatinine">RFT — Creatinine (mg/dL)</label>
+            <input id="creatinine">
+          </div>
+          <div>
+            <label for="urea">RFT — Urea (mg/dL)</label>
+            <input id="urea">
+          </div>
+          <div>
+            <label for="hb">FBC — Hemoglobin (g/dL)</label>
+            <input id="hb">
+          </div>
+          <div>
+            <label for="wbc">FBC — WBC (10^9/L)</label>
+            <input id="wbc">
+          </div>
+          <div>
+            <label for="platelets">FBC — Platelets (10^9/L)</label>
+            <input id="platelets">
+          </div>
+          <div>
+            <label for="urine_protein">Urine RE — Protein (mg/dL)</label>
+            <input id="urine_protein">
+          </div>
+          <div>
+            <label for="urine_glucose">Urine RE — Glucose (mg/dL)</label>
+            <input id="urine_glucose">
+          </div>
+        </div>
+
+        <h3>Alerts</h3>
+        <div id="alertBox" class="alert-box" role="status"></div>
+
+        <h3>Differential <span class="badge-warn-inline">Decision support</span></h3>
+        <div id="differentialPanel" class="diff-panel">
+          <p class="muted">Press Analyze after recording findings.</p>
+        </div>
+
+        <h3>Impression / working diagnosis</h3>
+        <textarea id="impression" rows="2" placeholder="Clinician working diagnosis"></textarea>
+
+        <h3>Plan <span class="badge-warn-inline">Decision support — editable</span></h3>
+        <div class="btn-row">
+          <button type="button" id="btnDraftPlan" class="btn-secondary">Draft plan from selected condition</button>
+        </div>
+        <label for="planDraft">Draft plan items (one per line)</label>
+        <textarea id="planDraft" rows="5"></textarea>
+        <label for="planEdits">Clinician edits / notes</label>
+        <textarea id="planEdits" rows="2"></textarea>
+        <div class="row">
+          <div>
+            <label for="planApprover">Approved by</label>
+            <input id="planApprover" placeholder="Clinician name">
+          </div>
+          <div class="btn-row align-end">
+            <button type="button" id="btnApprovePlan" class="btn-primary">Approve plan</button>
+          </div>
+        </div>
+        <p id="planStatus" class="hint">Plan status: draft</p>
+
+        <h3>Visit summary</h3>
+        <div class="btn-row">
+          <button type="button" id="btnBuildSummary" class="btn-secondary">Refresh summary</button>
+          <button type="button" id="btnPrintSummary" class="btn-secondary">Print summary</button>
+        </div>
+        <textarea id="summary" rows="12" readonly></textarea>
+
+        <div class="btn-row sticky-actions">
+          <button type="button" id="btnSaveEncounter" class="btn-primary">Save encounter</button>
+        </div>
+      </section>
+
+      <!-- Data tools -->
+      <section class="panel" id="dataPanel">
+        <h2>Data &amp; backup</h2>
+        <p class="hint" id="storeMeta"></p>
+        <div class="btn-row wrap">
+          <button type="button" id="btnExport" class="btn-primary">Export backup (JSON)</button>
+          <label class="btn-secondary file-label">
+            Import backup
+            <input type="file" id="importFile" accept="application/json,.json" hidden>
+          </label>
+          <button type="button" id="btnReset" class="btn-danger">Reset demo data</button>
+        </div>
+        <pre id="importReport" class="import-report hidden"></pre>
+      </section>
+    </main>
+
+    <footer class="app-footer">
+      <p>
+        Smart Clerking Assistant MVP — localStorage demo.
+        Does not diagnose, prescribe, or replace clinical judgment.
+        Escalate emergencies using normal facility procedures.
+      </p>
+    </footer>
   </div>
 
-  <script src="script.js"></script>
+  <script src="js/localStore.js"></script>
+  <script src="js/knowledge.js"></script>
+  <script src="js/app.js"></script>
 </body>
 </html>

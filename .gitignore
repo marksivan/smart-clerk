@@ -1,0 +1,18 @@
+# Dependencies
+node_modules/
+
+# OS / editor
+.DS_Store
+*.log
+.idea/
+.vscode/
+
+# Never commit clinical backups or patient exports
+*-backup*.json
+smart-clerking-backup*.json
+exports/
+backups/
+
+# Local env
+.env
+.env.*
