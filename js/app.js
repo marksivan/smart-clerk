@@ -137,23 +137,36 @@
   }
 
   function showPage(page) {
-    state.page = page;
+    state.page = page || "patients";
     ["patients", "help", "settings"].forEach(function (name) {
       const el = $("page" + name.charAt(0).toUpperCase() + name.slice(1));
       if (!el) return;
-      const active = name === page;
-      el.hidden = !active;
-      el.classList.toggle("active", active);
+      const active = name === state.page;
+      if (active) {
+        el.hidden = false;
+        el.removeAttribute("hidden");
+        el.classList.add("active");
+        el.style.display = "";
+      } else {
+        el.hidden = true;
+        el.setAttribute("hidden", "hidden");
+        el.classList.remove("active");
+        el.style.display = "none";
+      }
     });
     document.querySelectorAll(".top-nav-btn").forEach(function (btn) {
-      const active = btn.getAttribute("data-page") === page;
+      const active = btn.getAttribute("data-page") === state.page;
       btn.classList.toggle("active", active);
       if (active) btn.setAttribute("aria-current", "page");
       else btn.removeAttribute("aria-current");
     });
-    if (page === "settings") {
+    if (state.page === "settings") {
       updateStoreMeta();
       updateLastBackupLine();
+    }
+    // Ensure no modal is left covering the page when navigating
+    if (state.page !== "patients" && state.modalOpen === "onboardingModal") {
+      dismissOnboarding();
     }
   }
 
@@ -170,13 +183,21 @@
     const hasSelection = !!state.selectedConditionId;
     const hasPlan = !!getVal("planDraft").trim();
     const hasApprover = !!(getVal("planApprover").trim() || getVal("clinicianName").trim());
-    const showForm = hasPatient || state.editingNewPatient;
+    const showForm = true; // Patient form stays visible on Patients page
+    const showEmptyHint = !hasPatient && !state.editingNewPatient;
 
     if ($("patientEmptyState")) {
-      $("patientEmptyState").classList.toggle("hidden", showForm);
+      $("patientEmptyState").classList.toggle("hidden", !showEmptyHint);
     }
     if ($("patientFormBlock")) {
-      $("patientFormBlock").classList.toggle("hidden", !showForm);
+      $("patientFormBlock").classList.remove("hidden");
+    }
+    if ($("patientFormHint")) {
+      $("patientFormHint").textContent = hasPatient
+        ? "Selected patient details. Save after edits, then start or open an encounter."
+        : state.editingNewPatient
+          ? "Enter the new patient details, then press Save patient."
+          : "Fill in details below to create a patient, or click a search result to open one.";
     }
 
     setDisabled(
@@ -1524,6 +1545,8 @@
     state.lastFocused = document.activeElement;
     state.modalOpen = id;
     modal.classList.remove("hidden");
+    modal.style.display = "flex";
+    modal.setAttribute("aria-hidden", "false");
     const focusables = getFocusable(modal);
     if (focusables.length) focusables[0].focus();
   }
@@ -1532,6 +1555,8 @@
     const modal = $(id);
     if (!modal) return;
     modal.classList.add("hidden");
+    modal.style.display = "none";
+    modal.setAttribute("aria-hidden", "true");
     if (state.modalOpen === id) state.modalOpen = null;
     if (state.lastFocused && state.lastFocused.focus) {
       try {
@@ -1578,20 +1603,30 @@
 
   // --- Events ---
   function bind() {
-    document.querySelectorAll(".top-nav-btn").forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        showPage(btn.getAttribute("data-page"));
-      });
+    // Event delegation so nav keeps working even if buttons are re-rendered
+    document.addEventListener("click", function (ev) {
+      const navBtn = ev.target.closest && ev.target.closest(".top-nav-btn");
+      if (navBtn) {
+        ev.preventDefault();
+        showPage(navBtn.getAttribute("data-page"));
+        return;
+      }
+      const how = ev.target.closest && ev.target.closest("#btnHowItWorks");
+      if (how) {
+        ev.preventDefault();
+        showPage("help");
+      }
     });
 
-    $("btnHowItWorks").addEventListener("click", function () {
-      showPage("help");
-    });
-    $("btnOnboardingHelp").addEventListener("click", function () {
-      dismissOnboarding();
-      showPage("help");
-    });
-    $("btnOnboardingDismiss").addEventListener("click", dismissOnboarding);
+    if ($("btnOnboardingHelp")) {
+      $("btnOnboardingHelp").addEventListener("click", function () {
+        dismissOnboarding();
+        showPage("help");
+      });
+    }
+    if ($("btnOnboardingDismiss")) {
+      $("btnOnboardingDismiss").addEventListener("click", dismissOnboarding);
+    }
 
     $("btnSearch").addEventListener("click", runSearch);
     $("searchQuery").addEventListener("keydown", function (ev) {
@@ -1815,6 +1850,15 @@
     } catch (e) {
       state.lastBackupAt = null;
     }
+    // Force-hide modals before binding in case CSS cache is stale
+    ["onboardingModal", "deleteModal"].forEach(function (id) {
+      const el = $(id);
+      if (el) {
+        el.classList.add("hidden");
+        el.style.display = "none";
+        el.setAttribute("aria-hidden", "true");
+      }
+    });
     bind();
     showPage("patients");
     updateStoreMeta();
@@ -1822,9 +1866,11 @@
     updateActionGates();
     refreshAlerts();
     refreshEncounterList(null);
-    if (localStorage.getItem(ONBOARDING_KEY) !== "1") {
-      openModal("onboardingModal");
-    }
+    try {
+      if (localStorage.getItem(ONBOARDING_KEY) !== "1") {
+        openModal("onboardingModal");
+      }
+    } catch (e) {}
   }
 
   window.addEventListener("DOMContentLoaded", init);

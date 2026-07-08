@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Smart Clerking Assistant</title>
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=20260708b">
 </head>
 <body>
   <div class="app">
@@ -47,12 +47,16 @@
         </div>
 
         <div id="patientEmptyState" class="compact-empty">
-          <p>Search for an existing patient or create a new patient to begin.</p>
+          <p>
+            Search for an existing patient and <strong>click a result</strong>, or press
+            <strong>New patient</strong> to create one.
+          </p>
           <button type="button" id="btnHowItWorks" class="link-btn">How does this work?</button>
         </div>
 
-        <div id="patientFormBlock" class="hidden">
+        <div id="patientFormBlock">
           <h3 class="section-title">Patient information</h3>
+          <p id="patientFormHint" class="hint">Fill in details below, then save the patient.</p>
           <div id="duplicateWarning" class="alert-box hidden" role="alert"></div>
 
           <div class="form-grid">
@@ -111,7 +115,7 @@
         </div>
         <div id="encounterCards" class="encounter-cards hidden" role="list"></div>
         <!-- Keep select for programmatic compatibility; visually replaced by cards -->
-        <select id="encounterList" class="sr-only" aria-hidden="true" tabindex="-1">
+        <select id="encounterList" class="sr-only" aria-hidden="true" tabindex="-1" style="display:none">
           <option value="">—</option>
         </select>
       </section>
@@ -475,8 +479,8 @@
     </div>
   </div>
 
-  <script src="js/localStore.js"></script>
-  <script src="js/knowledge.js"></script>
-  <script src="js/app.js"></script>
+  <script src="js/localStore.js?v=20260708b"></script>
+  <script src="js/knowledge.js?v=20260708b"></script>
+  <script src="js/app.js?v=20260708b"></script>
 </body>
 </html>
