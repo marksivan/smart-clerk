@@ -37,7 +37,21 @@ node tests/storage.test.js
 
 ## GitHub Pages
 
-Publish this repository (or `/docs` / Actions workflow) as a static site. Keep the Pages URL stable after records are created — changing origin clears access to existing `localStorage` data. Export a backup before any URL or domain change.
+**Live URL (after you enable Pages once):**  
+https://marksivan.github.io/health-express/
+
+A 404 means Pages is not enabled yet. The app files are on `main`, but GitHub will not serve them until Pages is turned on.
+
+### One-time setup (repo owner)
+
+1. Open **Settings → Pages**  
+   https://github.com/marksivan/health-express/settings/pages
+2. Under **Build and deployment → Source**, choose **GitHub Actions**  
+   (or **Deploy from a branch** → `main` → `/` root).
+3. If using Actions: open the **Actions** tab, run **Deploy GitHub Pages**, wait until it is green.
+4. Wait 1–2 minutes, then open https://marksivan.github.io/health-express/
+
+Keep that URL stable after records are created — changing origin clears access to existing `localStorage` data. Export a backup before any URL or domain change.
 
 Do not commit patient records, exported backups, or private clinical content. Only fictional sample knowledge belongs in the repo.
 
