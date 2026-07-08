@@ -14,7 +14,11 @@
         <p class="subtitle">Admin / clinician workspace — patients do not use this app</p>
       </div>
       <div class="header-meta">
-        <span id="saveStatus" class="save-status" aria-live="polite">Not saved yet</span>
+        <div id="saveStatus" class="save-status" aria-live="polite">
+          <div class="save-line" id="savePatientLine">Patient: not selected</div>
+          <div class="save-line" id="saveEncounterLine">Encounter: none</div>
+          <div class="save-line" id="saveChangeLine">No unsaved changes</div>
+        </div>
         <span class="badge-warn">Decision support — clinician verification required</span>
       </div>
     </header>
@@ -28,41 +32,43 @@
       <button type="button" id="dismissPrivacy" class="btn-secondary">Dismiss</button>
     </aside>
 
-    <main class="layout">
-      <!-- Patient panel -->
-      <section class="panel" id="patientPanel">
+    <ol class="workflow-guide" id="workflowGuide" aria-label="Suggested workflow">
+      <li data-step="1" class="active">Select or create a patient</li>
+      <li data-step="2">Start a new encounter</li>
+      <li data-step="3">Enter presenting complaint</li>
+      <li data-step="4">Confirm symptoms</li>
+      <li data-step="5">Generate questions</li>
+      <li data-step="6">Record answers</li>
+      <li data-step="7">Analyze findings</li>
+      <li data-step="8">Review and approve the plan</li>
+    </ol>
+
+    <div class="workspace">
+      <!-- Left: patient & encounter navigation -->
+      <aside class="nav-column panel" id="patientPanel">
         <h2>Patient</h2>
-        <div class="row">
-          <div>
-            <label for="searchQuery">Search</label>
-            <input id="searchQuery" placeholder="Name, local ID, phone, or DOB">
-          </div>
-          <div class="btn-row align-end">
-            <button type="button" id="btnSearch" class="btn-secondary">Search</button>
-            <button type="button" id="btnNewPatient" class="btn-primary">New patient</button>
-          </div>
+
+        <label for="searchQuery">Search</label>
+        <div class="search-row">
+          <input id="searchQuery" placeholder="Name, local ID, phone, or DOB" autocomplete="off">
+          <button type="button" id="btnSearch" class="btn-secondary">Search</button>
         </div>
-        <select id="patientList" aria-label="Patient list">
-          <option value="">— Select patient —</option>
-        </select>
+        <div id="searchResults" class="search-results" role="listbox" aria-label="Search results"></div>
         <div id="duplicateWarning" class="alert-box hidden" role="alert"></div>
 
-        <div class="grid-2">
-          <div>
+        <div class="btn-row">
+          <button type="button" id="btnNewPatient" class="btn-secondary">New patient</button>
+          <button type="button" id="btnSavePatient" class="btn-primary">Save patient</button>
+        </div>
+
+        <div class="grid-2 compact">
+          <div class="span-2">
             <label for="name">Name *</label>
             <input id="name" autocomplete="off">
           </div>
           <div>
             <label for="localPatientId">Local patient ID</label>
             <input id="localPatientId" autocomplete="off">
-          </div>
-          <div>
-            <label for="age">Age</label>
-            <input id="age" type="number" min="0" max="130">
-          </div>
-          <div>
-            <label for="dob">Date of birth</label>
-            <input id="dob" type="date">
           </div>
           <div>
             <label for="sex">Sex</label>
@@ -74,6 +80,15 @@
             </select>
           </div>
           <div>
+            <label for="dob">Date of birth <span class="pref">(preferred)</span></label>
+            <input id="dob" type="date">
+          </div>
+          <div>
+            <label for="age">Age</label>
+            <input id="age" type="number" min="0" max="130" placeholder="Auto from DOB">
+            <p class="field-hint" id="ageHint">Enter DOB to calculate age, or estimated age if DOB unknown.</p>
+          </div>
+          <div>
             <label for="phone">Phone</label>
             <input id="phone" autocomplete="off">
           </div>
@@ -81,224 +96,293 @@
             <label for="occupation">Occupation</label>
             <input id="occupation">
           </div>
-          <div>
+          <div class="span-2">
             <label for="address">Address</label>
             <input id="address">
           </div>
         </div>
+
+        <div class="nav-divider"></div>
+        <h3 class="nav-subhead">Encounters</h3>
         <div class="btn-row">
-          <button type="button" id="btnSavePatient" class="btn-primary">Save patient</button>
-          <button type="button" id="btnNewEncounter" class="btn-secondary">New encounter</button>
+          <button type="button" id="btnNewEncounter" class="btn-primary" disabled title="Select or save a patient first">New encounter</button>
         </div>
-        <div>
-          <label for="encounterList">Encounters for this patient</label>
-          <select id="encounterList" aria-label="Encounter list">
-            <option value="">— No encounters —</option>
-          </select>
+        <label for="encounterList">Open encounter</label>
+        <select id="encounterList" aria-label="Encounter list" disabled>
+          <option value="">— Select patient first —</option>
+        </select>
+        <div id="patientContext" class="patient-context muted">No patient selected</div>
+      </aside>
+
+      <!-- Right: staged clerking form -->
+      <section class="form-column">
+        <nav class="stage-nav" aria-label="Clerking stages">
+          <button type="button" class="stage-tab active" data-stage="history" disabled>History</button>
+          <button type="button" class="stage-tab" data-stage="examination" disabled>Examination</button>
+          <button type="button" class="stage-tab" data-stage="assessment" disabled>Assessment</button>
+          <button type="button" class="stage-tab" data-stage="plan" disabled>Plan</button>
+          <button type="button" class="stage-tab" data-stage="summary" disabled>Summary</button>
+        </nav>
+
+        <div id="encounterLocked" class="empty-state panel">
+          <h2>Start an encounter</h2>
+          <p>Select or create a patient on the left, then press <strong>New encounter</strong> to begin clerking.</p>
+          <ol>
+            <li>Select or create a patient</li>
+            <li>Start a new encounter</li>
+            <li>Enter the presenting complaint and confirm symptoms</li>
+            <li>Generate questions, record answers, then analyze</li>
+            <li>Review the plan and approve before relying on the summary</li>
+          </ol>
+        </div>
+
+        <div id="encounterWorkspace" class="hidden">
+          <div class="encounter-meta panel-lite">
+            <div class="grid-2 compact">
+              <div>
+                <label for="clinicianName">Clinician / staff name</label>
+                <input id="clinicianName">
+              </div>
+              <div>
+                <label for="unit">Unit</label>
+                <select id="unit">
+                  <option value="">Select unit</option>
+                  <option value="medicine">Medicine</option>
+                  <option value="cardio">Cardiology</option>
+                  <option value="resp">Respiratory</option>
+                  <option value="obgyn">Obstetrics &amp; Gynaecology</option>
+                  <option value="cns">Neurology</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- HISTORY -->
+          <section class="stage-panel panel" data-stage-panel="history">
+            <h2>History</h2>
+            <label for="pc">Presenting complaint (free text)</label>
+            <textarea id="pc" rows="2" placeholder="e.g. Cough and fever for three days"></textarea>
+
+            <div class="row">
+              <div>
+                <label for="symptomInput">Add / confirm symptom</label>
+                <input id="symptomInput" placeholder="Type to autocomplete…" list="symptomSuggestions">
+                <datalist id="symptomSuggestions"></datalist>
+              </div>
+              <div class="btn-row align-end">
+                <button type="button" id="btnAddSymptom" class="btn-secondary">Add symptom</button>
+              </div>
+            </div>
+            <div id="symptomChips" class="chip-list" aria-live="polite"></div>
+
+            <div class="btn-row primary-action-row">
+              <button type="button" id="btnGenerateQuestions" class="btn-primary" disabled title="Confirm at least one symptom first">Generate questions</button>
+            </div>
+            <p class="hint">Suggested questions are decision support — ask the patient and record answers.</p>
+
+            <h3>Suggested questions <span class="tag-system">Suggested by system</span></h3>
+            <div id="questionsPanel" class="questions-panel gen-block">
+              <p class="muted">No questions yet. Confirm symptoms, then generate questions.</p>
+            </div>
+
+            <h3>History details <span class="tag-clinician">Clinician-entered</span></h3>
+            <label for="hpc">History of presenting complaint</label>
+            <textarea id="hpc" rows="2"></textarea>
+            <label for="odq">On direct questioning</label>
+            <textarea id="odq" rows="2"></textarea>
+            <label for="pastMedicalSurgicalHistory">Past medical &amp; surgical history</label>
+            <textarea id="pastMedicalSurgicalHistory" rows="2"></textarea>
+            <div class="grid-2">
+              <div>
+                <label for="drugHx">Drug history</label>
+                <textarea id="drugHx" rows="2"></textarea>
+              </div>
+              <div>
+                <label for="allergyHx">Allergy history</label>
+                <textarea id="allergyHx" rows="2"></textarea>
+              </div>
+              <div>
+                <label for="familyHx">Family history</label>
+                <textarea id="familyHx" rows="2"></textarea>
+              </div>
+              <div>
+                <label for="socialHx">Social history</label>
+                <textarea id="socialHx" rows="2"></textarea>
+              </div>
+            </div>
+            <label for="ros">Review of systems</label>
+            <textarea id="ros" rows="2"></textarea>
+            <div id="unitSection"></div>
+
+            <div class="stage-footer">
+              <button type="button" class="btn-primary stage-next" data-next="examination">Continue to examination</button>
+            </div>
+          </section>
+
+          <!-- EXAMINATION -->
+          <section class="stage-panel panel hidden" data-stage-panel="examination">
+            <h2>Examination</h2>
+            <button type="button" id="btnExamTemplate" class="btn-secondary">Insert exam template</button>
+            <label for="generalExam">General examination</label>
+            <textarea id="generalExam" rows="3"></textarea>
+            <label for="systemicExam">Systemic examination</label>
+            <textarea id="systemicExam" rows="4"></textarea>
+
+            <h3>Vitals</h3>
+            <div class="grid-4">
+              <div>
+                <label for="bp">Blood pressure — mmHg</label>
+                <input id="bp" placeholder="120/80" inputmode="numeric" autocomplete="off">
+                <p class="field-hint error hidden" id="bpError">Use format 120/80</p>
+              </div>
+              <div>
+                <label for="pulse">Pulse — beats/min</label>
+                <input id="pulse" type="number" min="0" max="300" placeholder="e.g. 88">
+              </div>
+              <div>
+                <label for="rr">Respiratory rate — breaths/min</label>
+                <input id="rr" type="number" min="0" max="80" placeholder="e.g. 18">
+              </div>
+              <div>
+                <label for="temp">Temperature — °C</label>
+                <input id="temp" type="number" min="30" max="45" step="0.1" placeholder="e.g. 37.2">
+              </div>
+            </div>
+
+            <h3>Laboratory review</h3>
+            <div class="grid-2">
+              <div>
+                <label for="alt">LFT — ALT (U/L)</label>
+                <input id="alt" type="number" step="any">
+              </div>
+              <div>
+                <label for="ast">LFT — AST (U/L)</label>
+                <input id="ast" type="number" step="any">
+              </div>
+              <div>
+                <label for="creatinine">RFT — Creatinine (mg/dL)</label>
+                <input id="creatinine" type="number" step="any">
+              </div>
+              <div>
+                <label for="urea">RFT — Urea (mg/dL)</label>
+                <input id="urea" type="number" step="any">
+              </div>
+              <div>
+                <label for="hb">FBC — Hemoglobin (g/dL)</label>
+                <input id="hb" type="number" step="any">
+              </div>
+              <div>
+                <label for="wbc">FBC — WBC (10^9/L)</label>
+                <input id="wbc" type="number" step="any">
+              </div>
+              <div>
+                <label for="platelets">FBC — Platelets (10^9/L)</label>
+                <input id="platelets" type="number" step="any">
+              </div>
+              <div>
+                <label for="urine_protein">Urine RE — Protein (mg/dL)</label>
+                <input id="urine_protein" type="number" step="any">
+              </div>
+              <div>
+                <label for="urine_glucose">Urine RE — Glucose (mg/dL)</label>
+                <input id="urine_glucose" type="number" step="any">
+              </div>
+            </div>
+
+            <h3>Alerts</h3>
+            <div id="alertBox" class="alert-box" role="status"></div>
+
+            <div class="stage-footer">
+              <button type="button" class="btn-secondary stage-prev" data-prev="history">Back</button>
+              <button type="button" class="btn-primary stage-next" data-next="assessment">Continue to assessment</button>
+            </div>
+          </section>
+
+          <!-- ASSESSMENT -->
+          <section class="stage-panel panel hidden" data-stage-panel="assessment">
+            <h2>Assessment</h2>
+            <div class="btn-row primary-action-row">
+              <button type="button" id="btnAnalyze" class="btn-primary" disabled title="Confirm symptoms first">Analyze findings</button>
+            </div>
+            <p class="hint">Ranked conditions are suggestions only — not a diagnosis.</p>
+
+            <h3>Condition candidates <span class="tag-system">Suggested by system</span></h3>
+            <div id="differentialPanel" class="diff-panel gen-block">
+              <p class="muted">Press Analyze after recording findings.</p>
+            </div>
+
+            <h3>Clinician-selected impression <span class="tag-clinician">Clinician-entered</span></h3>
+            <label for="impression">Working diagnosis / impression</label>
+            <textarea id="impression" rows="2" placeholder="Enter or edit the clinician working impression — do not treat system suggestions as final diagnosis"></textarea>
+
+            <div class="stage-footer">
+              <button type="button" class="btn-secondary stage-prev" data-prev="examination">Back</button>
+              <button type="button" class="btn-primary stage-next" data-next="plan">Continue to plan</button>
+            </div>
+          </section>
+
+          <!-- PLAN -->
+          <section class="stage-panel panel hidden" data-stage-panel="plan">
+            <h2>Plan</h2>
+            <div class="btn-row primary-action-row">
+              <button type="button" id="btnDraftPlan" class="btn-secondary" disabled title="Select a condition candidate first">Draft plan from selected condition</button>
+            </div>
+            <label for="planDraft">Draft plan items (one per line) <span class="tag-system">Suggested by system — editable</span></label>
+            <textarea id="planDraft" rows="5" class="gen-input"></textarea>
+            <label for="planEdits">Clinician edits / notes <span class="tag-clinician">Edited by clinician</span></label>
+            <textarea id="planEdits" rows="2"></textarea>
+            <div class="row">
+              <div>
+                <label for="planApprover">Approved by</label>
+                <input id="planApprover" placeholder="Clinician name">
+              </div>
+              <div class="btn-row align-end">
+                <button type="button" id="btnApprovePlan" class="btn-primary" disabled title="Enter draft plan and approver">Approve plan</button>
+              </div>
+            </div>
+            <p id="planStatus" class="hint">Plan status: draft</p>
+
+            <div class="stage-footer">
+              <button type="button" class="btn-secondary stage-prev" data-prev="assessment">Back</button>
+              <button type="button" class="btn-primary stage-next" data-next="summary">Continue to summary</button>
+            </div>
+          </section>
+
+          <!-- SUMMARY -->
+          <section class="stage-panel panel hidden" data-stage-panel="summary">
+            <h2>Visit summary</h2>
+            <p class="hint">System suggestions and clinician confirmations are labeled separately below.</p>
+            <div class="btn-row">
+              <button type="button" id="btnBuildSummary" class="btn-secondary">Refresh summary</button>
+              <button type="button" id="btnPrintSummary" class="btn-secondary">Print summary</button>
+            </div>
+            <textarea id="summary" rows="16" readonly></textarea>
+
+            <div class="stage-footer sticky-actions">
+              <button type="button" class="btn-secondary stage-prev" data-prev="plan">Back</button>
+              <button type="button" id="btnSaveEncounter" class="btn-primary" disabled>Save encounter</button>
+            </div>
+          </section>
         </div>
       </section>
+    </div>
 
-      <!-- Encounter documentation -->
-      <section class="panel" id="encounterPanel">
-        <h2>Encounter</h2>
-        <div class="grid-2">
-          <div>
-            <label for="clinicianName">Clinician / staff name</label>
-            <input id="clinicianName">
-          </div>
-          <div>
-            <label for="unit">Unit</label>
-            <select id="unit">
-              <option value="">Select unit</option>
-              <option value="medicine">Medicine</option>
-              <option value="cardio">Cardiology</option>
-              <option value="resp">Respiratory</option>
-              <option value="obgyn">Obstetrics &amp; Gynaecology</option>
-              <option value="cns">Neurology</option>
-            </select>
-          </div>
-        </div>
-
-        <h3>Presenting complaint &amp; symptoms</h3>
-        <label for="pc">Presenting complaint (free text)</label>
-        <textarea id="pc" rows="2" placeholder="e.g. Cough and fever for three days"></textarea>
-        <div class="row">
-          <div>
-            <label for="symptomInput">Add / confirm symptom</label>
-            <input id="symptomInput" placeholder="Type to autocomplete…" list="symptomSuggestions">
-            <datalist id="symptomSuggestions"></datalist>
-          </div>
-          <div class="btn-row align-end">
-            <button type="button" id="btnAddSymptom" class="btn-secondary">Add symptom</button>
-          </div>
-        </div>
-        <div id="symptomChips" class="chip-list" aria-live="polite"></div>
-
-        <div class="btn-row">
-          <button type="button" id="btnGenerateQuestions" class="btn-primary">Generate questions</button>
-          <button type="button" id="btnAnalyze" class="btn-primary">Analyze</button>
-        </div>
-        <p class="hint">Generated questions and differentials are decision support — verify with the patient and clinician judgment.</p>
-
-        <h3>Generated questions</h3>
-        <div id="questionsPanel" class="questions-panel">
-          <p class="muted">No questions yet. Enter symptoms and press Generate questions.</p>
-        </div>
-
-        <h3>History</h3>
-        <label for="hpc">History of presenting complaint</label>
-        <textarea id="hpc" rows="2"></textarea>
-        <label for="odq">On direct questioning</label>
-        <textarea id="odq" rows="2"></textarea>
-        <label for="pastMedicalSurgicalHistory">Past medical &amp; surgical history</label>
-        <textarea id="pastMedicalSurgicalHistory" rows="2"></textarea>
-        <div class="grid-2">
-          <div>
-            <label for="drugHx">Drug history</label>
-            <textarea id="drugHx" rows="2"></textarea>
-          </div>
-          <div>
-            <label for="allergyHx">Allergy history</label>
-            <textarea id="allergyHx" rows="2"></textarea>
-          </div>
-          <div>
-            <label for="familyHx">Family history</label>
-            <textarea id="familyHx" rows="2"></textarea>
-          </div>
-          <div>
-            <label for="socialHx">Social history</label>
-            <textarea id="socialHx" rows="2"></textarea>
-          </div>
-        </div>
-        <label for="ros">Review of systems</label>
-        <textarea id="ros" rows="2"></textarea>
-
-        <div id="unitSection"></div>
-
-        <h3>Physical examination</h3>
-        <button type="button" id="btnExamTemplate" class="btn-secondary">Insert exam template</button>
-        <label for="generalExam">General examination</label>
-        <textarea id="generalExam" rows="3"></textarea>
-        <label for="systemicExam">Systemic examination</label>
-        <textarea id="systemicExam" rows="4"></textarea>
-
-        <h3>Vitals</h3>
-        <div class="grid-4">
-          <div>
-            <label for="bp">BP</label>
-            <input id="bp" placeholder="120/80">
-          </div>
-          <div>
-            <label for="pulse">Pulse</label>
-            <input id="pulse" placeholder="bpm">
-          </div>
-          <div>
-            <label for="rr">Respiratory rate</label>
-            <input id="rr">
-          </div>
-          <div>
-            <label for="temp">Temperature</label>
-            <input id="temp" placeholder="°C">
-          </div>
-        </div>
-
-        <h3>Laboratory review</h3>
-        <div class="grid-2">
-          <div>
-            <label for="alt">LFT — ALT (U/L)</label>
-            <input id="alt">
-          </div>
-          <div>
-            <label for="ast">LFT — AST (U/L)</label>
-            <input id="ast">
-          </div>
-          <div>
-            <label for="creatinine">RFT — Creatinine (mg/dL)</label>
-            <input id="creatinine">
-          </div>
-          <div>
-            <label for="urea">RFT — Urea (mg/dL)</label>
-            <input id="urea">
-          </div>
-          <div>
-            <label for="hb">FBC — Hemoglobin (g/dL)</label>
-            <input id="hb">
-          </div>
-          <div>
-            <label for="wbc">FBC — WBC (10^9/L)</label>
-            <input id="wbc">
-          </div>
-          <div>
-            <label for="platelets">FBC — Platelets (10^9/L)</label>
-            <input id="platelets">
-          </div>
-          <div>
-            <label for="urine_protein">Urine RE — Protein (mg/dL)</label>
-            <input id="urine_protein">
-          </div>
-          <div>
-            <label for="urine_glucose">Urine RE — Glucose (mg/dL)</label>
-            <input id="urine_glucose">
-          </div>
-        </div>
-
-        <h3>Alerts</h3>
-        <div id="alertBox" class="alert-box" role="status"></div>
-
-        <h3>Differential <span class="badge-warn-inline">Decision support</span></h3>
-        <div id="differentialPanel" class="diff-panel">
-          <p class="muted">Press Analyze after recording findings.</p>
-        </div>
-
-        <h3>Impression / working diagnosis</h3>
-        <textarea id="impression" rows="2" placeholder="Clinician working diagnosis"></textarea>
-
-        <h3>Plan <span class="badge-warn-inline">Decision support — editable</span></h3>
-        <div class="btn-row">
-          <button type="button" id="btnDraftPlan" class="btn-secondary">Draft plan from selected condition</button>
-        </div>
-        <label for="planDraft">Draft plan items (one per line)</label>
-        <textarea id="planDraft" rows="5"></textarea>
-        <label for="planEdits">Clinician edits / notes</label>
-        <textarea id="planEdits" rows="2"></textarea>
-        <div class="row">
-          <div>
-            <label for="planApprover">Approved by</label>
-            <input id="planApprover" placeholder="Clinician name">
-          </div>
-          <div class="btn-row align-end">
-            <button type="button" id="btnApprovePlan" class="btn-primary">Approve plan</button>
-          </div>
-        </div>
-        <p id="planStatus" class="hint">Plan status: draft</p>
-
-        <h3>Visit summary</h3>
-        <div class="btn-row">
-          <button type="button" id="btnBuildSummary" class="btn-secondary">Refresh summary</button>
-          <button type="button" id="btnPrintSummary" class="btn-secondary">Print summary</button>
-        </div>
-        <textarea id="summary" rows="12" readonly></textarea>
-
-        <div class="btn-row sticky-actions">
-          <button type="button" id="btnSaveEncounter" class="btn-primary">Save encounter</button>
-        </div>
-      </section>
-
-      <!-- Data tools -->
-      <section class="panel" id="dataPanel">
-        <h2>Data &amp; backup</h2>
-        <p class="hint" id="storeMeta"></p>
-        <div class="btn-row wrap">
-          <button type="button" id="btnExport" class="btn-primary">Export backup (JSON)</button>
-          <label class="btn-secondary file-label">
-            Import backup
-            <input type="file" id="importFile" accept="application/json,.json" hidden>
-          </label>
-          <button type="button" id="btnReset" class="btn-danger">Reset demo data</button>
-        </div>
-        <pre id="importReport" class="import-report hidden"></pre>
-      </section>
-    </main>
+    <section class="panel data-panel" id="dataPanel">
+      <h2>Data &amp; backup</h2>
+      <p class="hint" id="storeMeta"></p>
+      <div class="btn-row wrap">
+        <button type="button" id="btnExport" class="btn-primary">Export backup (JSON)</button>
+        <label class="btn-secondary file-label">
+          Import backup
+          <input type="file" id="importFile" accept="application/json,.json" hidden>
+        </label>
+      </div>
+      <pre id="importReport" class="import-report hidden"></pre>
+      <div class="danger-zone">
+        <p class="hint">Destructive actions are separate from the clerking workflow.</p>
+        <button type="button" id="btnReset" class="btn-danger">Reset demo data</button>
+      </div>
+    </section>
 
     <footer class="app-footer">
       <p>

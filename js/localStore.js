@@ -7,6 +7,8 @@
 
   const STORAGE_KEY = "smartClerking:v1";
   const SCHEMA_VERSION = 1;
+  const APPLICATION_NAME = "Smart Clerking Assistant";
+  const APPLICATION_VERSION = "0.2.0";
 
   function uuid() {
     if (global.crypto && typeof global.crypto.randomUUID === "function") {
@@ -25,6 +27,8 @@
 
   function emptyStore() {
     return {
+      application: APPLICATION_NAME,
+      applicationVersion: APPLICATION_VERSION,
       schemaVersion: SCHEMA_VERSION,
       exportedAt: null,
       patients: [],
@@ -46,7 +50,11 @@
   }
 
   function writeRaw(store) {
-    const copy = Object.assign({}, store, { schemaVersion: SCHEMA_VERSION });
+    const copy = Object.assign({}, store, {
+      application: APPLICATION_NAME,
+      applicationVersion: APPLICATION_VERSION,
+      schemaVersion: SCHEMA_VERSION,
+    });
     global.localStorage.setItem(STORAGE_KEY, JSON.stringify(copy));
     return copy;
   }
@@ -377,6 +385,8 @@
   function exportAll() {
     const store = readRaw();
     return {
+      application: APPLICATION_NAME,
+      applicationVersion: APPLICATION_VERSION,
       schemaVersion: SCHEMA_VERSION,
       exportedAt: nowIso(),
       patients: store.patients,
@@ -389,6 +399,8 @@
     const report = {
       valid: true,
       errors: [],
+      warnings: [],
+      converted: null,
       patients: 0,
       encounters: 0,
     };
@@ -397,12 +409,33 @@
       report.errors.push("Backup is not a JSON object.");
       return report;
     }
+    if (data.application && data.application !== APPLICATION_NAME) {
+      report.warnings.push(
+        "Unexpected application field: " + data.application + " (expected " + APPLICATION_NAME + ")."
+      );
+    }
     if (data.schemaVersion == null) {
       report.errors.push("Missing schemaVersion.");
       report.valid = false;
     } else if (Number(data.schemaVersion) > SCHEMA_VERSION) {
-      report.errors.push("Unsupported newer schemaVersion: " + data.schemaVersion);
+      report.errors.push(
+        "Unsupported newer schemaVersion: " +
+          data.schemaVersion +
+          " (this app supports up to " +
+          SCHEMA_VERSION +
+          ")."
+      );
       report.valid = false;
+    } else if (Number(data.schemaVersion) < SCHEMA_VERSION) {
+      report.converted =
+        "schema v" + data.schemaVersion + " → v" + SCHEMA_VERSION;
+      report.warnings.push(
+        "Older schemaVersion " +
+          data.schemaVersion +
+          " will be migrated to " +
+          SCHEMA_VERSION +
+          "."
+      );
     }
     if (!Array.isArray(data.patients)) {
       report.errors.push("patients must be an array.");
@@ -468,6 +501,8 @@
 
     if (mode === "replace") {
       writeRaw({
+        application: APPLICATION_NAME,
+        applicationVersion: APPLICATION_VERSION,
         schemaVersion: SCHEMA_VERSION,
         exportedAt: incoming.exportedAt || nowIso(),
         patients: incoming.patients,
@@ -576,6 +611,8 @@
   const api = {
     STORAGE_KEY: STORAGE_KEY,
     SCHEMA_VERSION: SCHEMA_VERSION,
+    APPLICATION_NAME: APPLICATION_NAME,
+    APPLICATION_VERSION: APPLICATION_VERSION,
     uuid: uuid,
     nowIso: nowIso,
     migrate: migrate,
