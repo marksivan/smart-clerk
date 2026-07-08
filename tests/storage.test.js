@@ -104,6 +104,8 @@ test("export and import merge report", () => {
   Store.encounterStore.save({ patientId: p.id, presentingComplaint: "fever" });
   const backup = Store.exportAll();
   assert.strictEqual(backup.schemaVersion, 1);
+  assert.strictEqual(backup.application, "Smart Clerking Assistant");
+  assert.ok(backup.applicationVersion);
   assert.ok(backup.exportedAt);
 
   Store.resetAll();
@@ -113,6 +115,24 @@ test("export and import merge report", () => {
   assert.ok(report.ok);
   assert.ok(report.added >= 2);
   assert.strictEqual(Store.getMeta().patientCount, 1);
+});
+
+test("import rejects unsupported newer schema with clear error", () => {
+  const report = Store.importAll(
+    {
+      application: "Smart Clerking Assistant",
+      schemaVersion: 99,
+      patients: [],
+      encounters: [],
+    },
+    "merge"
+  );
+  assert.strictEqual(report.ok, false);
+  assert.ok(
+    report.validation.errors.some(function (e) {
+      return /Unsupported newer schemaVersion/.test(e);
+    })
+  );
 });
 
 test("import replace mode", () => {

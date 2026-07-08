@@ -10,12 +10,17 @@
   const state = {
     patientId: null,
     encounterId: null,
+    encounterStarted: false,
     findings: [],
     questionAnswers: [],
     conditionCandidates: [],
     selectedConditionId: null,
-    lastSavedAt: null,
+    patientSavedAt: null,
+    encounterSavedAt: null,
+    lastBackupAt: null,
     dirty: false,
+    ageFromDob: false,
+    stage: "history",
   };
 
   function $(id) {
@@ -32,23 +37,65 @@
     if (el) el.value = value == null ? "" : value;
   }
 
+  function setDisabled(id, disabled, title) {
+    const el = $(id);
+    if (!el) return;
+    el.disabled = !!disabled;
+    if (title != null) el.title = title;
+  }
+
+  function formatTime(iso) {
+    if (!iso) return "";
+    try {
+      return new Date(iso).toLocaleString();
+    } catch (e) {
+      return String(iso);
+    }
+  }
+
   function markDirty() {
     state.dirty = true;
     updateSaveStatus();
+    updateActionGates();
+    updateWorkflowGuide();
   }
 
   function updateSaveStatus() {
-    const el = $("saveStatus");
-    if (!el) return;
-    if (state.lastSavedAt) {
-      const t = new Date(state.lastSavedAt);
-      el.textContent =
-        (state.dirty ? "Unsaved changes · " : "Saved on this device · ") +
-        t.toLocaleString();
-      el.classList.toggle("unsaved", state.dirty);
+    const patientLine = $("savePatientLine");
+    const encounterLine = $("saveEncounterLine");
+    const changeLine = $("saveChangeLine");
+    if (!patientLine) return;
+
+    if (!state.patientId) {
+      patientLine.textContent = "Patient: not selected";
+    } else if (state.patientSavedAt) {
+      patientLine.textContent = "Patient saved · " + formatTime(state.patientSavedAt);
     } else {
-      el.textContent = state.dirty ? "Unsaved changes" : "Not saved yet";
-      el.classList.toggle("unsaved", state.dirty);
+      patientLine.textContent = "Patient selected · not saved yet";
+    }
+
+    if (!state.encounterStarted) {
+      encounterLine.textContent = "Encounter: none";
+    } else if (state.dirty) {
+      encounterLine.textContent = state.encounterSavedAt
+        ? "Encounter draft outdated · last saved " + formatTime(state.encounterSavedAt)
+        : "Encounter draft · not saved yet";
+    } else if (state.encounterSavedAt) {
+      encounterLine.textContent =
+        "Encounter draft saved locally at " + formatTime(state.encounterSavedAt);
+    } else {
+      encounterLine.textContent = "Encounter started · not saved yet";
+    }
+
+    if (state.dirty) {
+      changeLine.textContent = "Unsaved changes";
+      changeLine.classList.add("unsaved");
+    } else if (state.lastBackupAt) {
+      changeLine.textContent = "Backup exported · " + formatTime(state.lastBackupAt);
+      changeLine.classList.remove("unsaved");
+    } else {
+      changeLine.textContent = "No unsaved changes";
+      changeLine.classList.remove("unsaved");
     }
   }
 
@@ -66,29 +113,288 @@
       " encounters";
   }
 
-  // --- Patient UI ---
-  function refreshPatientList(selectedId) {
-    const list = $("patientList");
-    const patients = Store.patientStore.getAll().sort(function (a, b) {
-      return String(a.name).localeCompare(String(b.name));
+  function confirmedSymptoms() {
+    return state.findings.filter(function (f) {
+      return f.status === "confirmed";
     });
-    list.innerHTML = '<option value="">— Select patient —</option>';
+  }
+
+  function updateActionGates() {
+    const hasPatient = !!state.patientId;
+    const hasEncounter = !!state.encounterStarted;
+    const hasSymptoms = confirmedSymptoms().length > 0;
+    const hasSelection = !!state.selectedConditionId;
+    const hasPlan = !!getVal("planDraft").trim();
+    const hasApprover = !!(getVal("planApprover").trim() || getVal("clinicianName").trim());
+
+    setDisabled(
+      "btnNewEncounter",
+      !hasPatient,
+      hasPatient ? "Start a new encounter for this patient" : "Select or save a patient first"
+    );
+    setDisabled("encounterList", !hasPatient, "");
+
+    document.querySelectorAll(".stage-tab").forEach(function (tab) {
+      tab.disabled = !hasEncounter;
+    });
+
+    if (hasEncounter) {
+      $("encounterLocked").classList.add("hidden");
+      $("encounterWorkspace").classList.remove("hidden");
+    } else {
+      $("encounterLocked").classList.remove("hidden");
+      $("encounterWorkspace").classList.add("hidden");
+    }
+
+    setDisabled(
+      "btnGenerateQuestions",
+      !hasEncounter || !hasSymptoms,
+      !hasEncounter
+        ? "Start an encounter first"
+        : hasSymptoms
+          ? "Generate follow-up questions"
+          : "Confirm at least one symptom first"
+    );
+    setDisabled(
+      "btnAnalyze",
+      !hasEncounter || !hasSymptoms,
+      !hasEncounter
+        ? "Start an encounter first"
+        : hasSymptoms
+          ? "Analyze confirmed findings"
+          : "Confirm at least one symptom first"
+    );
+    setDisabled(
+      "btnDraftPlan",
+      !hasSelection,
+      hasSelection ? "Draft plan from selected condition" : "Select a condition candidate first"
+    );
+    setDisabled(
+      "btnApprovePlan",
+      !hasPlan || !hasApprover,
+      !hasPlan ? "Enter or draft plan items first" : "Enter approving clinician name"
+    );
+    setDisabled(
+      "btnSaveEncounter",
+      !hasEncounter,
+      hasEncounter ? "Save encounter to this device" : "Start an encounter first"
+    );
+
+    updatePatientContext();
+  }
+
+  function updatePatientContext() {
+    const el = $("patientContext");
+    if (!state.patientId) {
+      el.textContent = "No patient selected";
+      el.className = "patient-context muted";
+      return;
+    }
+    const p = Store.patientStore.getById(state.patientId) || readPatientFromForm();
+    const ageBit = p.dob
+      ? "DOB " + p.dob + (p.age ? " · age " + p.age : "")
+      : p.age
+        ? "Estimated age " + p.age
+        : "Age unknown";
+    el.className = "patient-context";
+    el.innerHTML =
+      "<strong>" +
+      escapeHtml(p.name || "Unnamed") +
+      "</strong><br>" +
+      escapeHtml(
+        [p.localPatientId && "ID " + p.localPatientId, ageBit, p.sex, p.phone]
+          .filter(Boolean)
+          .join(" · ")
+      );
+  }
+
+  function updateWorkflowGuide() {
+    const hasPatient = !!state.patientId;
+    const hasEncounter = !!state.encounterStarted;
+    const hasPc = !!getVal("pc").trim();
+    const hasSymptoms = confirmedSymptoms().length > 0;
+    const hasQuestions = state.questionAnswers.length > 0;
+    const hasAnswers = state.questionAnswers.some(function (q) {
+      return q.answer && q.answer !== "skipped";
+    });
+    const hasDiff = state.conditionCandidates.length > 0;
+    const planApproved = ($("planStatus").dataset.status || "") === "approved";
+
+    const done = [
+      hasPatient,
+      hasEncounter,
+      hasPc,
+      hasSymptoms,
+      hasQuestions,
+      hasAnswers,
+      hasDiff,
+      planApproved,
+    ];
+
+    let active = 0;
+    for (let i = 0; i < done.length; i++) {
+      if (!done[i]) {
+        active = i;
+        break;
+      }
+      active = i;
+    }
+
+    document.querySelectorAll("#workflowGuide li").forEach(function (li, idx) {
+      li.classList.toggle("done", done[idx]);
+      li.classList.toggle("active", idx === active && !done[idx] || (idx === active && done.every(Boolean)));
+    });
+  }
+
+  // --- Age / DOB ---
+  function ageFromDateOfBirth(dobStr) {
+    if (!dobStr) return "";
+    const dob = new Date(dobStr + "T00:00:00");
+    if (isNaN(dob.getTime())) return "";
+    const today = new Date();
+    let age = today.getFullYear() - dob.getFullYear();
+    const m = today.getMonth() - dob.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
+    if (age < 0 || age > 130) return "";
+    return String(age);
+  }
+
+  function onDobChange() {
+    const dob = getVal("dob");
+    const calculated = ageFromDateOfBirth(dob);
+    const hint = $("ageHint");
+    if (calculated) {
+      setVal("age", calculated);
+      state.ageFromDob = true;
+      $("age").readOnly = true;
+      hint.textContent = "Calculated age from date of birth: " + calculated;
+      hint.classList.remove("warn");
+    } else {
+      state.ageFromDob = false;
+      $("age").readOnly = false;
+      hint.textContent = "Enter DOB to calculate age, or estimated age if DOB unknown.";
+      hint.classList.remove("warn");
+    }
+    markDirty();
+  }
+
+  function onAgeManual() {
+    if (state.ageFromDob && getVal("dob")) {
+      const calc = ageFromDateOfBirth(getVal("dob"));
+      if (getVal("age") !== calc) {
+        $("ageHint").textContent =
+          "Age differs from DOB calculation (" + calc + "). Clear DOB to keep estimated age.";
+        $("ageHint").classList.add("warn");
+      }
+    } else {
+      $("ageHint").textContent = "Estimated age (DOB unknown).";
+      $("ageHint").classList.remove("warn");
+    }
+    markDirty();
+  }
+
+  // --- Vitals validation ---
+  function validateBp() {
+    const raw = getVal("bp").trim();
+    const err = $("bpError");
+    if (!raw) {
+      err.classList.add("hidden");
+      return true;
+    }
+    const ok = /^\d{2,3}\s*\/\s*\d{2,3}$/.test(raw);
+    err.classList.toggle("hidden", ok);
+    return ok;
+  }
+
+  // --- Stages ---
+  function showStage(stage) {
+    if (!state.encounterStarted) return;
+    state.stage = stage;
+    document.querySelectorAll(".stage-tab").forEach(function (tab) {
+      tab.classList.toggle("active", tab.getAttribute("data-stage") === stage);
+    });
+    document.querySelectorAll("[data-stage-panel]").forEach(function (panel) {
+      panel.classList.toggle(
+        "hidden",
+        panel.getAttribute("data-stage-panel") !== stage
+      );
+    });
+  }
+
+  // --- Patient search ---
+  function lastEncounterDate(patientId) {
+    const list = Store.encounterStore.getByPatientId(patientId);
+    if (!list.length) return "";
+    return list[0].updatedAt || list[0].createdAt || "";
+  }
+
+  function renderSearchResults(patients) {
+    const box = $("searchResults");
+    if (!patients.length) {
+      box.innerHTML = '<p class="muted">No matching patients.</p>';
+      return;
+    }
+    box.innerHTML = "";
     patients.forEach(function (p) {
-      const opt = document.createElement("option");
-      opt.value = p.id;
-      opt.textContent =
-        p.name +
-        (p.age ? " (" + p.age + ")" : "") +
-        (p.localPatientId ? " · " + p.localPatientId : "");
-      list.appendChild(opt);
+      const last = lastEncounterDate(p.id);
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "search-result";
+      row.setAttribute("role", "option");
+      row.innerHTML =
+        "<div class=\"sr-name\">" +
+        escapeHtml(p.name || "Unnamed") +
+        "</div>" +
+        "<div class=\"sr-meta\">" +
+        escapeHtml(
+          [
+            p.localPatientId ? "ID " + p.localPatientId : null,
+            p.dob ? "DOB " + p.dob : p.age ? "Age " + p.age : null,
+            p.sex,
+            p.phone,
+            last ? "Last encounter " + formatTime(last) : "No encounters",
+          ]
+            .filter(Boolean)
+            .join(" · ")
+        ) +
+        "</div>";
+      row.addEventListener("click", function () {
+        selectPatient(p.id);
+        box.innerHTML = "";
+        setVal("searchQuery", "");
+      });
+      box.appendChild(row);
     });
-    if (selectedId) list.value = selectedId;
+  }
+
+  function runSearch() {
+    const q = getVal("searchQuery");
+    const results = Store.patientStore.search(q);
+    renderSearchResults(results);
+  }
+
+  function selectPatient(id) {
+    const p = Store.patientStore.getById(id);
+    if (!p) return;
+    state.patientId = p.id;
+    state.patientSavedAt = p.updatedAt;
+    fillPatientForm(p);
+    clearEncounterForm(false);
+    refreshEncounterList(p.id);
+    state.dirty = false;
+    updateSaveStatus();
+    updateActionGates();
+    updateWorkflowGuide();
   }
 
   function refreshEncounterList(patientId, selectedId) {
     const list = $("encounterList");
-    list.innerHTML = '<option value="">— No encounters —</option>';
-    if (!patientId) return;
+    if (!patientId) {
+      list.innerHTML = '<option value="">— Select patient first —</option>';
+      list.disabled = true;
+      return;
+    }
+    list.disabled = false;
     const encounters = Store.encounterStore.getByPatientId(patientId);
     if (!encounters.length) {
       list.innerHTML = '<option value="">— No encounters yet —</option>';
@@ -98,7 +404,7 @@
     encounters.forEach(function (e) {
       const opt = document.createElement("option");
       opt.value = e.id;
-      const when = e.updatedAt ? new Date(e.updatedAt).toLocaleString() : "draft";
+      const when = e.updatedAt ? formatTime(e.updatedAt) : "draft";
       const pc = (e.presentingComplaint || "Encounter").slice(0, 40);
       opt.textContent = when + " · " + pc + " · " + (e.status || "draft");
       list.appendChild(opt);
@@ -123,8 +429,23 @@
   function fillPatientForm(p) {
     setVal("name", p.name);
     setVal("localPatientId", p.localPatientId);
-    setVal("age", p.age);
     setVal("dob", p.dob);
+    if (p.dob) {
+      const calc = ageFromDateOfBirth(p.dob);
+      setVal("age", calc || p.age);
+      state.ageFromDob = !!calc;
+      $("age").readOnly = !!calc;
+      $("ageHint").textContent = calc
+        ? "Calculated age from date of birth: " + calc
+        : "Enter DOB to calculate age, or estimated age if DOB unknown.";
+    } else {
+      setVal("age", p.age);
+      state.ageFromDob = false;
+      $("age").readOnly = false;
+      $("ageHint").textContent = p.age
+        ? "Estimated age (DOB unknown)."
+        : "Enter DOB to calculate age, or estimated age if DOB unknown.";
+    }
     setVal("sex", p.sex);
     setVal("phone", p.phone);
     setVal("address", p.address);
@@ -138,7 +459,13 @@
       }
     );
     state.patientId = null;
+    state.patientSavedAt = null;
+    state.ageFromDob = false;
+    $("age").readOnly = false;
+    $("ageHint").textContent =
+      "Enter DOB to calculate age, or estimated age if DOB unknown.";
     $("duplicateWarning").classList.add("hidden");
+    $("searchResults").innerHTML = "";
   }
 
   function savePatient(force) {
@@ -147,23 +474,65 @@
       alert("Patient name is required.");
       return null;
     }
+    if (patient.dob && patient.age) {
+      const calc = ageFromDateOfBirth(patient.dob);
+      if (calc && calc !== String(patient.age)) {
+        if (
+          !confirm(
+            "Age (" +
+              patient.age +
+              ") does not match date of birth (calculated " +
+              calc +
+              "). Save anyway using DOB-calculated age?"
+          )
+        ) {
+          return null;
+        }
+        patient.age = calc;
+        setVal("age", calc);
+      }
+    }
     const result = Store.patientStore.save(patient, { force: !!force });
     if (!result.ok && result.reason === "duplicate") {
-      const names = result.duplicates
-        .map(function (d) {
-          return d.name + (d.age ? " (" + d.age + ")" : "");
-        })
-        .join(", ");
-      $("duplicateWarning").classList.remove("hidden");
-      $("duplicateWarning").innerHTML =
-        "Possible duplicate patient(s): <strong>" +
-        names +
-        "</strong>. " +
-        '<button type="button" id="btnForceSave" class="btn-secondary">Save anyway</button> ' +
-        "or select the existing record.";
+      const box = $("duplicateWarning");
+      box.classList.remove("hidden");
+      box.innerHTML =
+        "<strong>Possible duplicate patient(s):</strong><ul>" +
+        result.duplicates
+          .map(function (d) {
+            const last = lastEncounterDate(d.id);
+            return (
+              "<li><button type=\"button\" class=\"linkish pick-dup\" data-id=\"" +
+              escapeHtml(d.id) +
+              "\">" +
+              escapeHtml(d.name) +
+              "</button> — " +
+              escapeHtml(
+                [
+                  d.localPatientId && "ID " + d.localPatientId,
+                  d.dob ? "DOB " + d.dob : d.age ? "Age " + d.age : null,
+                  d.sex,
+                  d.phone,
+                  last ? "Last " + formatTime(last) : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")
+              ) +
+              "</li>"
+            );
+          })
+          .join("") +
+        "</ul>" +
+        '<button type="button" id="btnForceSave" class="btn-secondary">Save as new patient anyway</button>';
       $("btnForceSave").onclick = function () {
         savePatient(true);
       };
+      box.querySelectorAll(".pick-dup").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          selectPatient(btn.getAttribute("data-id"));
+          box.classList.add("hidden");
+        });
+      });
       return null;
     }
     if (!result.ok) {
@@ -172,12 +541,13 @@
     }
     $("duplicateWarning").classList.add("hidden");
     state.patientId = result.patient.id;
-    refreshPatientList(state.patientId);
+    state.patientSavedAt = result.patient.updatedAt;
     refreshEncounterList(state.patientId, state.encounterId);
-    state.lastSavedAt = result.patient.updatedAt;
-    state.dirty = false;
+    state.dirty = state.encounterStarted ? state.dirty : false;
     updateSaveStatus();
     updateStoreMeta();
+    updateActionGates();
+    updateWorkflowGuide();
     return result.patient;
   }
 
@@ -251,6 +621,7 @@
   }
 
   function fillEncounterForm(e) {
+    state.encounterStarted = true;
     setVal("clinicianName", e.clinicianName);
     setVal("unit", e.unit);
     setVal("pc", e.presentingComplaint);
@@ -303,14 +674,20 @@
     renderDifferentials();
     refreshAlerts();
     buildSummary();
+    showStage(state.stage || "history");
+    updateActionGates();
+    updateWorkflowGuide();
   }
 
-  function clearEncounterForm() {
+  function clearEncounterForm(keepPatient) {
     state.encounterId = null;
+    state.encounterStarted = false;
+    state.encounterSavedAt = null;
     state.findings = [];
     state.questionAnswers = [];
     state.conditionCandidates = [];
     state.selectedConditionId = null;
+    state.stage = "history";
     [
       "clinicianName",
       "unit",
@@ -350,10 +727,30 @@
     setPlanStatus("draft", null);
     renderSymptomChips();
     $("questionsPanel").innerHTML =
-      '<p class="muted">No questions yet. Enter symptoms and press Generate questions.</p>';
+      '<p class="muted">No questions yet. Confirm symptoms, then generate questions.</p>';
     $("differentialPanel").innerHTML =
       '<p class="muted">Press Analyze after recording findings.</p>';
     $("alertBox").textContent = "";
+    $("bpError").classList.add("hidden");
+    if (!keepPatient) {
+      /* noop */
+    }
+    updateActionGates();
+    updateWorkflowGuide();
+  }
+
+  function startNewEncounter() {
+    if (!state.patientId) {
+      alert("Select or save a patient first.");
+      return;
+    }
+    clearEncounterForm(true);
+    state.encounterStarted = true;
+    state.dirty = true;
+    showStage("history");
+    updateSaveStatus();
+    updateActionGates();
+    updateWorkflowGuide();
   }
 
   function setPlanStatus(status, approvedAt) {
@@ -363,13 +760,22 @@
     el.textContent =
       "Plan status: " +
       status +
-      (approvedAt ? " · " + new Date(approvedAt).toLocaleString() : "");
+      (approvedAt ? " · " + formatTime(approvedAt) : "");
   }
 
   function saveEncounter() {
     if (!state.patientId) {
       const p = savePatient(false);
       if (!p) return;
+    }
+    if (!state.encounterStarted) {
+      alert("Start an encounter first.");
+      return;
+    }
+    if (!validateBp()) {
+      alert("Fix blood pressure format (e.g. 120/80) before saving.");
+      showStage("examination");
+      return;
     }
     const encounter = readEncounterFromForm();
     if (!encounter.patientId) {
@@ -382,11 +788,13 @@
       return;
     }
     state.encounterId = result.encounter.id;
-    state.lastSavedAt = result.encounter.updatedAt;
+    state.encounterSavedAt = result.encounter.updatedAt;
     state.dirty = false;
     updateSaveStatus();
     refreshEncounterList(state.patientId, state.encounterId);
     updateStoreMeta();
+    updateActionGates();
+    updateWorkflowGuide();
   }
 
   function loadUnitFields() {
@@ -399,7 +807,7 @@
         '<div class="grid-2">' +
         '<div><label for="gravida">Gravida</label><input id="gravida"></div>' +
         '<div><label for="para">Para</label><input id="para"></div>' +
-        '<div><label for="ga">Estimated gestational age (weeks)</label><input id="ga"></div>' +
+        '<div><label for="ga">Estimated gestational age (weeks)</label><input id="ga" type="number"></div>' +
         '<div><label for="edd">Estimated date of delivery</label><input id="edd" type="date"></div>' +
         "</div>";
     }
@@ -422,14 +830,16 @@
     state.findings.forEach(function (f, idx) {
       const chip = document.createElement("span");
       chip.className = "chip chip-" + (f.status || "confirmed");
+      const tag =
+        f.status === "denied"
+          ? '<span class="tag-rejected">Rejected / denied</span>'
+          : '<span class="tag-confirmed">Confirmed by clinician</span>';
       chip.innerHTML =
         "<strong>" +
         escapeHtml(f.label) +
         "</strong> " +
-        '<em>' +
-        escapeHtml(f.status) +
-        "</em> " +
-        '<button type="button" data-idx="' +
+        tag +
+        ' <button type="button" data-idx="' +
         idx +
         '" class="chip-remove" aria-label="Remove">×</button>';
       box.appendChild(chip);
@@ -500,7 +910,10 @@
 
   // --- Questions ---
   function generateQuestions() {
-    // Seed findings from PC text if empty
+    if (!confirmedSymptoms().length) {
+      alert("Confirm at least one symptom first.");
+      return;
+    }
     if (!state.findings.length && getVal("pc")) {
       Knowledge.suggestSymptoms(getVal("pc")).forEach(function (m) {
         addSymptom(m.label, m.id, "confirmed");
@@ -545,11 +958,19 @@
     state.questionAnswers.forEach(function (qa, idx) {
       const div = document.createElement("div");
       div.className = "question-item";
+      const answered = qa.answer && qa.answer !== "skipped";
+      const statusTag = !qa.answer
+        ? '<span class="tag-system">Suggested by system</span>'
+        : qa.answer === "skipped"
+          ? '<span class="tag-rejected">Skipped</span>'
+          : '<span class="tag-confirmed">Answered by clinician</span>';
       div.innerHTML =
         '<p class="q-text"><span class="q-cat">' +
         escapeHtml(qa.category || "") +
         "</span> " +
         escapeHtml(qa.questionText) +
+        " " +
+        statusTag +
         "</p>" +
         '<div class="q-actions">' +
         '<button type="button" data-idx="' +
@@ -567,6 +988,7 @@
         '" placeholder="Answer notes" value="' +
         escapeHtml(qa.answer || "") +
         '">';
+      if (answered) div.classList.add("answered");
       panel.appendChild(div);
     });
     panel.querySelectorAll(".q-btn").forEach(function (btn) {
@@ -589,12 +1011,11 @@
     const qa = state.questionAnswers[index];
     if (!qa) return;
     if (ans === "skip") {
-      qa.answer = qa.answer || "skipped";
+      qa.answer = "skipped";
       markDirty();
       renderQuestions();
       return;
     }
-    // Heuristic: map question text keywords to findings
     const text = (qa.questionText || "").toLowerCase();
     const map = [
       { key: "shortness of breath", id: "sob", label: "Shortness of breath" },
@@ -620,11 +1041,7 @@
     if (matched) {
       addSymptom(matched.label, matched.id, ans === "yes" ? "confirmed" : "denied");
     }
-    qa.answer =
-      (ans === "yes" ? "Present" : "Denied") +
-      (qa.answer && qa.answer.indexOf("Present") === -1 && qa.answer.indexOf("Denied") === -1
-        ? " — " + qa.answer
-        : "");
+    qa.answer = ans === "yes" ? "Present" : "Denied";
     markDirty();
     renderQuestions();
   }
@@ -684,6 +1101,10 @@
   }
 
   function analyze() {
+    if (!confirmedSymptoms().length) {
+      alert("Confirm at least one symptom before analyzing.");
+      return;
+    }
     const ctx = {
       findings: state.findings,
       vitals: {
@@ -698,6 +1119,7 @@
     renderDifferentials();
     refreshAlerts();
     buildSummary();
+    showStage("assessment");
     markDirty();
   }
 
@@ -709,7 +1131,7 @@
       return;
     }
     panel.innerHTML =
-      '<p class="ds-banner">Decision support — clinician verification required. Not a diagnosis.</p>';
+      '<p class="ds-banner">Decision support — clinician verification required. These are condition candidates, not diagnoses.</p>';
     state.conditionCandidates.forEach(function (c) {
       const div = document.createElement("div");
       div.className =
@@ -730,14 +1152,20 @@
           return Knowledge.labelForSymptom(id);
         })
         .join(", ");
+      const statusTag =
+        c.status === "selected"
+          ? '<span class="tag-confirmed">Selected by clinician</span>'
+          : '<span class="tag-system">Suggested by system</span>';
       div.innerHTML =
         "<header><strong>#" +
         c.rank +
         " " +
         escapeHtml(c.label) +
-        "</strong> <span class=\"score\">score " +
+        "</strong> " +
+        statusTag +
+        ' <span class="score">score ' +
         c.score +
-        '</span></header>' +
+        "</span></header>" +
         "<p><em>Supports:</em> " +
         escapeHtml(support || "—") +
         "</p>" +
@@ -749,7 +1177,7 @@
         "</p>" +
         '<button type="button" class="btn-secondary select-cond" data-id="' +
         escapeHtml(c.id) +
-        '">Select for focused plan</button>';
+        '">Select as working impression</button>';
       panel.appendChild(div);
     });
     panel.querySelectorAll(".select-cond").forEach(function (btn) {
@@ -762,7 +1190,10 @@
           return c.id === state.selectedConditionId;
         });
         if (selected) {
-          setVal("impression", selected.label + " (working — verify)");
+          setVal(
+            "impression",
+            selected.label + " (working impression — clinician to verify)"
+          );
         }
         renderDifferentials();
         markDirty();
@@ -772,7 +1203,8 @@
 
   function draftPlan() {
     if (!state.selectedConditionId) {
-      alert("Select a condition from the differential first.");
+      alert("Select a condition candidate from Assessment first.");
+      showStage("assessment");
       return;
     }
     const items = Knowledge.draftPlanForCondition(state.selectedConditionId);
@@ -809,8 +1241,11 @@
     s +=
       "Name: " +
       (p.name || "") +
+      ", DOB: " +
+      (p.dob || "—") +
       ", Age: " +
       (p.age || "") +
+      (p.dob ? " (from DOB)" : p.age ? " (estimated)" : "") +
       ", Sex: " +
       (p.sex || "") +
       "\n";
@@ -825,14 +1260,20 @@
     s += "Clinician: " + getVal("clinicianName") + ", Unit: " + getVal("unit") + "\n";
     s += "PC: " + getVal("pc") + "\n";
     s +=
-      "Findings: " +
+      "Findings (clinician-confirmed / denied):\n" +
       state.findings
         .map(function (f) {
-          return f.label + " [" + f.status + "]";
+          return (
+            "  - " +
+            f.label +
+            " [" +
+            (f.status === "denied" ? "Rejected / denied" : "Confirmed by clinician") +
+            "]"
+          );
         })
-        .join("; ") +
+        .join("\n") +
       "\n\n";
-    s += "HISTORY\n";
+    s += "HISTORY (clinician-entered)\n";
     s += "HPC: " + getVal("hpc") + "\n";
     s += "ODQ: " + getVal("odq") + "\n";
     s += "PM/SH: " + getVal("pastMedicalSurgicalHistory") + "\n";
@@ -849,27 +1290,27 @@
       getVal("socialHx") +
       "\n";
     s += "ROS: " + getVal("ros") + "\n\n";
-    s += "EXAM\n";
+    s += "EXAM (clinician-entered)\n";
     s += "General: " + getVal("generalExam") + "\n";
     s += "Systemic: " + getVal("systemicExam") + "\n";
     s +=
       "Vitals — BP: " +
       getVal("bp") +
-      ", Pulse: " +
+      " mmHg, Pulse: " +
       getVal("pulse") +
-      ", RR: " +
+      " beats/min, RR: " +
       getVal("rr") +
-      ", Temp: " +
+      " breaths/min, Temp: " +
       getVal("temp") +
-      "\n\n";
+      " °C\n\n";
     if (alerts.length) {
-      s += "ALERTS\n";
+      s += "ALERTS (system)\n";
       alerts.forEach(function (a) {
         s += "- " + a.label + "\n";
       });
       s += "\n";
     }
-    s += "DIFFERENTIAL (decision support)\n";
+    s += "CONDITION CANDIDATES (suggested by system — not a diagnosis)\n";
     state.conditionCandidates.forEach(function (c) {
       s +=
         "#" +
@@ -879,17 +1320,20 @@
         " (score " +
         c.score +
         ")" +
-        (c.status === "selected" ? " [SELECTED]" : "") +
+        (c.status === "selected" ? " [SELECTED BY CLINICIAN]" : " [suggested]") +
         "\n";
     });
-    s += "\nIMPRESSION: " + getVal("impression") + "\n";
+    s += "\nWORKING IMPRESSION (clinician): " + getVal("impression") + "\n";
     s +=
       "PLAN (" +
       ($("planStatus").dataset.status || "draft") +
       "):\n" +
+      "[Suggested by system — editable]\n" +
       getVal("planDraft") +
       "\n";
-    if (getVal("planEdits")) s += "Clinician edits: " + getVal("planEdits") + "\n";
+    if (getVal("planEdits")) {
+      s += "[Edited by clinician]\n" + getVal("planEdits") + "\n";
+    }
     if (getVal("planApprover")) s += "Approved by: " + getVal("planApprover") + "\n";
     setVal("summary", s);
   }
@@ -909,6 +1353,8 @@
       ".json";
     a.click();
     URL.revokeObjectURL(url);
+    state.lastBackupAt = Store.nowIso();
+    updateSaveStatus();
   }
 
   function importBackup(file) {
@@ -934,11 +1380,34 @@
         const el = $("importReport");
         el.classList.remove("hidden");
         el.textContent = JSON.stringify(report, null, 2);
-        refreshPatientList(state.patientId);
-        refreshEncounterList(state.patientId, state.encounterId);
+        if (state.patientId) refreshEncounterList(state.patientId, state.encounterId);
         updateStoreMeta();
-        if (!report.ok) alert("Import failed validation. See report.");
-        else alert("Import complete. See report for added/updated/skipped counts.");
+        updateActionGates();
+        if (!report.ok) {
+          alert(
+            "Import failed validation.\n" +
+              (report.validation && report.validation.errors
+                ? report.validation.errors.join("\n")
+                : "See report.")
+          );
+        } else {
+          const converted =
+            report.validation && report.validation.converted
+              ? "\nConverted: " + report.validation.converted
+              : "";
+          alert(
+            "Import complete." +
+              converted +
+              "\nAdded: " +
+              report.added +
+              ", Updated: " +
+              report.updated +
+              ", Skipped: " +
+              report.skipped +
+              ", Invalid: " +
+              report.invalid
+          );
+        }
       } catch (err) {
         alert("Invalid JSON backup: " + err.message);
       }
@@ -957,42 +1426,29 @@
     if (!confirm("Final confirmation: reset all demo data now?")) return;
     Store.resetAll();
     clearPatientForm();
-    clearEncounterForm();
-    refreshPatientList();
+    clearEncounterForm(false);
     refreshEncounterList(null);
-    state.lastSavedAt = null;
+    state.lastBackupAt = null;
     state.dirty = false;
     updateSaveStatus();
     updateStoreMeta();
+    updateActionGates();
+    updateWorkflowGuide();
     alert("Demo data reset.");
   }
 
   // --- Events ---
   function bind() {
-    $("btnSearch").addEventListener("click", function () {
-      const q = getVal("searchQuery");
-      const results = Store.patientStore.search(q);
-      const list = $("patientList");
-      list.innerHTML = '<option value="">— Select patient —</option>';
-      results.forEach(function (p) {
-        const opt = document.createElement("option");
-        opt.value = p.id;
-        opt.textContent = p.name + (p.age ? " (" + p.age + ")" : "");
-        list.appendChild(opt);
-      });
+    $("btnSearch").addEventListener("click", runSearch);
+    $("searchQuery").addEventListener("keydown", function (ev) {
+      if (ev.key === "Enter") {
+        ev.preventDefault();
+        runSearch();
+      }
     });
-
-    $("patientList").addEventListener("change", function () {
-      const id = getVal("patientList");
-      if (!id) return;
-      const p = Store.patientStore.getById(id);
-      if (!p) return;
-      state.patientId = p.id;
-      fillPatientForm(p);
-      clearEncounterForm();
-      refreshEncounterList(p.id);
-      state.dirty = false;
-      updateSaveStatus();
+    $("searchQuery").addEventListener("input", function () {
+      if (getVal("searchQuery").trim().length >= 2) runSearch();
+      if (!getVal("searchQuery").trim()) $("searchResults").innerHTML = "";
     });
 
     $("encounterList").addEventListener("change", function () {
@@ -1001,37 +1457,39 @@
       const e = Store.encounterStore.getById(id);
       if (!e) return;
       state.encounterId = e.id;
+      state.encounterSavedAt = e.updatedAt;
       fillEncounterForm(e);
-      state.lastSavedAt = e.updatedAt;
       state.dirty = false;
       updateSaveStatus();
     });
 
     $("btnNewPatient").addEventListener("click", function () {
       clearPatientForm();
-      clearEncounterForm();
+      clearEncounterForm(false);
       refreshEncounterList(null);
-      $("patientList").value = "";
-      markDirty();
+      state.dirty = false;
+      updateSaveStatus();
+      updateActionGates();
+      updateWorkflowGuide();
     });
 
     $("btnSavePatient").addEventListener("click", function () {
       savePatient(false);
     });
 
-    $("btnNewEncounter").addEventListener("click", function () {
-      if (!state.patientId) {
-        alert("Save or select a patient first.");
-        return;
-      }
-      clearEncounterForm();
-      $("encounterList").value = "";
-      markDirty();
-    });
-
+    $("btnNewEncounter").addEventListener("click", startNewEncounter);
     $("btnSaveEncounter").addEventListener("click", saveEncounter);
     $("unit").addEventListener("change", function () {
       loadUnitFields();
+      markDirty();
+    });
+
+    $("dob").addEventListener("change", onDobChange);
+    $("dob").addEventListener("input", onDobChange);
+    $("age").addEventListener("input", onAgeManual);
+    $("bp").addEventListener("input", function () {
+      validateBp();
+      refreshAlerts();
       markDirty();
     });
 
@@ -1039,16 +1497,12 @@
       const text = getVal("symptomInput").trim();
       if (!text) return;
       const matches = Knowledge.suggestSymptoms(text);
-      const match = matches.find(function (m) {
-        return normalize(m.label) === normalize(text);
-      }) || matches[0];
-      if (match && normalize(match.label) === normalize(text)) {
-        addSymptom(match.label, match.id, "confirmed");
-      } else if (match) {
-        addSymptom(match.label, match.id, "confirmed");
-      } else {
-        addSymptom(text, null, "confirmed");
-      }
+      const match =
+        matches.find(function (m) {
+          return normalize(m.label) === normalize(text);
+        }) || matches[0];
+      if (match) addSymptom(match.label, match.id, "confirmed");
+      else addSymptom(text, null, "confirmed");
       setVal("symptomInput", "");
     });
 
@@ -1102,22 +1556,48 @@
       } catch (e) {}
     });
 
-    // Autosave draft every 30s if dirty
+    document.querySelectorAll(".stage-tab").forEach(function (tab) {
+      tab.addEventListener("click", function () {
+        if (tab.disabled) return;
+        showStage(tab.getAttribute("data-stage"));
+      });
+    });
+    document.querySelectorAll(".stage-next").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        showStage(btn.getAttribute("data-next"));
+      });
+    });
+    document.querySelectorAll(".stage-prev").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        showStage(btn.getAttribute("data-prev"));
+      });
+    });
+
     setInterval(function () {
-      if (state.dirty && state.patientId) {
+      if (state.dirty && state.patientId && state.encounterStarted) {
         saveEncounter();
       }
     }, 30000);
 
-    // Mark dirty on common inputs
     document.querySelectorAll("input, textarea, select").forEach(function (el) {
-      if (el.id === "patientList" || el.id === "encounterList" || el.id === "searchQuery")
+      if (
+        el.id === "encounterList" ||
+        el.id === "searchQuery" ||
+        el.id === "importFile"
+      ) {
         return;
-      el.addEventListener("input", markDirty);
-      el.addEventListener("change", markDirty);
+      }
+      el.addEventListener("input", function () {
+        markDirty();
+        updateActionGates();
+      });
+      el.addEventListener("change", function () {
+        markDirty();
+        updateActionGates();
+      });
     });
 
-    ["bp", "pulse", "rr", "temp", "allergyHx"]
+    ["pulse", "rr", "temp", "allergyHx"]
       .concat([
         "alt",
         "ast",
@@ -1141,10 +1621,12 @@
       $("privacyBanner").classList.add("hidden");
     }
     bind();
-    refreshPatientList();
     updateStoreMeta();
     updateSaveStatus();
+    updateActionGates();
+    updateWorkflowGuide();
     refreshAlerts();
+    refreshEncounterList(null);
   }
 
   window.addEventListener("DOMContentLoaded", init);
