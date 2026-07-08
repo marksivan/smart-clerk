@@ -8,6 +8,7 @@
   const Knowledge = window.SmartClerkingKnowledge;
 
   const state = {
+    page: "patients",
     patientId: null,
     encounterId: null,
     encounterStarted: false,
@@ -21,7 +22,13 @@
     dirty: false,
     ageFromDob: false,
     stage: "history",
+    editingNewPatient: false,
+    modalOpen: null,
+    lastFocused: null,
   };
+
+  const LAST_BACKUP_KEY = "smartClerking:lastBackupAt";
+  const ONBOARDING_KEY = "smartClerking:onboardingDismissed";
 
   function $(id) {
     return document.getElementById(id);
@@ -57,7 +64,6 @@
     state.dirty = true;
     updateSaveStatus();
     updateActionGates();
-    updateWorkflowGuide();
   }
 
   function updateSaveStatus() {
@@ -90,19 +96,36 @@
     if (state.dirty) {
       changeLine.textContent = "Unsaved changes";
       changeLine.classList.add("unsaved");
-    } else if (state.lastBackupAt) {
-      changeLine.textContent = "Backup exported · " + formatTime(state.lastBackupAt);
-      changeLine.classList.remove("unsaved");
+      changeLine.classList.remove("muted");
     } else {
       changeLine.textContent = "No unsaved changes";
       changeLine.classList.remove("unsaved");
+      changeLine.classList.add("muted");
+    }
+
+    updateLastBackupLine();
+  }
+
+  function updateLastBackupLine() {
+    const el = $("lastBackupLine");
+    if (!el) return;
+    if (state.lastBackupAt) {
+      el.textContent = "Last backup downloaded: " + formatTime(state.lastBackupAt);
+    } else {
+      el.textContent = "No backup downloaded yet in this browser session.";
     }
   }
 
   function updateStoreMeta() {
     const meta = Store.getMeta();
-    $("storeMeta").textContent =
-      "Storage key: " +
+    const el = $("storeMeta");
+    if (!el) return;
+    el.textContent =
+      "Application: " +
+      (Store.APPLICATION_NAME || "Smart Clerking Assistant") +
+      " · version " +
+      (Store.APPLICATION_VERSION || "—") +
+      " · storage key: " +
       meta.storageKey +
       " · schema v" +
       meta.schemaVersion +
@@ -111,6 +134,27 @@
       " patients · " +
       meta.encounterCount +
       " encounters";
+  }
+
+  function showPage(page) {
+    state.page = page;
+    ["patients", "help", "settings"].forEach(function (name) {
+      const el = $("page" + name.charAt(0).toUpperCase() + name.slice(1));
+      if (!el) return;
+      const active = name === page;
+      el.hidden = !active;
+      el.classList.toggle("active", active);
+    });
+    document.querySelectorAll(".top-nav-btn").forEach(function (btn) {
+      const active = btn.getAttribute("data-page") === page;
+      btn.classList.toggle("active", active);
+      if (active) btn.setAttribute("aria-current", "page");
+      else btn.removeAttribute("aria-current");
+    });
+    if (page === "settings") {
+      updateStoreMeta();
+      updateLastBackupLine();
+    }
   }
 
   function confirmedSymptoms() {
@@ -126,24 +170,33 @@
     const hasSelection = !!state.selectedConditionId;
     const hasPlan = !!getVal("planDraft").trim();
     const hasApprover = !!(getVal("planApprover").trim() || getVal("clinicianName").trim());
+    const showForm = hasPatient || state.editingNewPatient;
+
+    if ($("patientEmptyState")) {
+      $("patientEmptyState").classList.toggle("hidden", showForm);
+    }
+    if ($("patientFormBlock")) {
+      $("patientFormBlock").classList.toggle("hidden", !showForm);
+    }
 
     setDisabled(
       "btnNewEncounter",
       !hasPatient,
-      hasPatient ? "Start a new encounter for this patient" : "Select or save a patient first"
+      hasPatient ? "Start a new encounter for this patient" : "Save or select a patient first"
     );
-    setDisabled("encounterList", !hasPatient, "");
+    setDisabled(
+      "btnNewEncounterEmpty",
+      !hasPatient,
+      hasPatient ? "Start a new encounter for this patient" : "Save or select a patient first"
+    );
 
-    document.querySelectorAll(".stage-tab").forEach(function (tab) {
-      tab.disabled = !hasEncounter;
-    });
-
-    if (hasEncounter) {
-      $("encounterLocked").classList.add("hidden");
-      $("encounterWorkspace").classList.remove("hidden");
-    } else {
-      $("encounterLocked").classList.remove("hidden");
-      $("encounterWorkspace").classList.add("hidden");
+    if ($("encounterWorkspace")) {
+      $("encounterWorkspace").classList.toggle("hidden", !hasEncounter);
+    }
+    if (hasEncounter && $("encountersPanel")) {
+      $("encountersPanel").classList.add("hidden");
+    } else if ($("encountersPanel")) {
+      $("encountersPanel").classList.remove("hidden");
     }
 
     setDisabled(
@@ -181,10 +234,12 @@
     );
 
     updatePatientContext();
+    refreshEncounterCards();
   }
 
   function updatePatientContext() {
     const el = $("patientContext");
+    if (!el) return;
     if (!state.patientId) {
       el.textContent = "No patient selected";
       el.className = "patient-context muted";
@@ -200,50 +255,12 @@
     el.innerHTML =
       "<strong>" +
       escapeHtml(p.name || "Unnamed") +
-      "</strong><br>" +
+      "</strong> · " +
       escapeHtml(
         [p.localPatientId && "ID " + p.localPatientId, ageBit, p.sex, p.phone]
           .filter(Boolean)
           .join(" · ")
       );
-  }
-
-  function updateWorkflowGuide() {
-    const hasPatient = !!state.patientId;
-    const hasEncounter = !!state.encounterStarted;
-    const hasPc = !!getVal("pc").trim();
-    const hasSymptoms = confirmedSymptoms().length > 0;
-    const hasQuestions = state.questionAnswers.length > 0;
-    const hasAnswers = state.questionAnswers.some(function (q) {
-      return q.answer && q.answer !== "skipped";
-    });
-    const hasDiff = state.conditionCandidates.length > 0;
-    const planApproved = ($("planStatus").dataset.status || "") === "approved";
-
-    const done = [
-      hasPatient,
-      hasEncounter,
-      hasPc,
-      hasSymptoms,
-      hasQuestions,
-      hasAnswers,
-      hasDiff,
-      planApproved,
-    ];
-
-    let active = 0;
-    for (let i = 0; i < done.length; i++) {
-      if (!done[i]) {
-        active = i;
-        break;
-      }
-      active = i;
-    }
-
-    document.querySelectorAll("#workflowGuide li").forEach(function (li, idx) {
-      li.classList.toggle("done", done[idx]);
-      li.classList.toggle("active", idx === active && !done[idx] || (idx === active && done.every(Boolean)));
-    });
   }
 
   // --- Age / DOB ---
@@ -319,6 +336,7 @@
         panel.getAttribute("data-stage-panel") !== stage
       );
     });
+    if ($("stageSelect")) $("stageSelect").value = stage;
   }
 
   // --- Patient search ---
@@ -378,38 +396,110 @@
     if (!p) return;
     state.patientId = p.id;
     state.patientSavedAt = p.updatedAt;
+    state.editingNewPatient = false;
     fillPatientForm(p);
-    clearEncounterForm(false);
+    clearEncounterForm(true);
     refreshEncounterList(p.id);
     state.dirty = false;
+    showPage("patients");
     updateSaveStatus();
     updateActionGates();
-    updateWorkflowGuide();
   }
 
   function refreshEncounterList(patientId, selectedId) {
     const list = $("encounterList");
-    if (!patientId) {
-      list.innerHTML = '<option value="">— Select patient first —</option>';
-      list.disabled = true;
+    if (list) {
+      list.innerHTML = '<option value="">—</option>';
+      if (patientId) {
+        Store.encounterStore.getByPatientId(patientId).forEach(function (e) {
+          const opt = document.createElement("option");
+          opt.value = e.id;
+          opt.textContent = e.id;
+          list.appendChild(opt);
+        });
+        if (selectedId) list.value = selectedId;
+      }
+    }
+    refreshEncounterCards();
+  }
+
+  function refreshEncounterCards() {
+    const empty = $("encountersEmpty");
+    const cards = $("encounterCards");
+    const emptyText = $("encountersEmptyText");
+    const emptyBtn = $("btnNewEncounterEmpty");
+    if (!empty || !cards) return;
+
+    if (!state.patientId) {
+      empty.classList.remove("hidden");
+      cards.classList.add("hidden");
+      emptyText.textContent = "Select a patient to view encounters.";
+      emptyBtn.classList.add("hidden");
       return;
     }
-    list.disabled = false;
-    const encounters = Store.encounterStore.getByPatientId(patientId);
+
+    const encounters = Store.encounterStore.getByPatientId(state.patientId);
     if (!encounters.length) {
-      list.innerHTML = '<option value="">— No encounters yet —</option>';
+      empty.classList.remove("hidden");
+      cards.classList.add("hidden");
+      emptyText.textContent = "No encounters recorded for this patient.";
+      emptyBtn.classList.remove("hidden");
+      emptyBtn.disabled = false;
       return;
     }
-    list.innerHTML = '<option value="">— Select encounter —</option>';
+
+    empty.classList.add("hidden");
+    cards.classList.remove("hidden");
+    cards.innerHTML = "";
     encounters.forEach(function (e) {
-      const opt = document.createElement("option");
-      opt.value = e.id;
-      const when = e.updatedAt ? formatTime(e.updatedAt) : "draft";
-      const pc = (e.presentingComplaint || "Encounter").slice(0, 40);
-      opt.textContent = when + " · " + pc + " · " + (e.status || "draft");
-      list.appendChild(opt);
+      const card = document.createElement("div");
+      card.className = "encounter-card";
+      card.setAttribute("role", "listitem");
+      const when = e.updatedAt || e.createdAt;
+      const impression = e.impression || "No working impression yet";
+      card.innerHTML =
+        "<div><div class=\"encounter-card-title\">" +
+        escapeHtml((e.presentingComplaint || "Encounter").slice(0, 80)) +
+        "</div><div class=\"encounter-card-meta\">" +
+        escapeHtml(
+          [
+            when ? formatTime(when) : null,
+            e.unit || null,
+            e.clinicianName ? "Staff: " + e.clinicianName : null,
+            "Status: " + (e.status || "draft"),
+          ]
+            .filter(Boolean)
+            .join(" · ")
+        ) +
+        "<br>Working impression: " +
+        escapeHtml(impression) +
+        "</div></div>" +
+        '<button type="button" class="btn-secondary open-encounter" data-id="' +
+        escapeHtml(e.id) +
+        '">Open encounter</button>';
+      cards.appendChild(card);
     });
-    if (selectedId) list.value = selectedId;
+    cards.querySelectorAll(".open-encounter").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        openEncounter(btn.getAttribute("data-id"));
+      });
+    });
+  }
+
+  function openEncounter(id) {
+    const e = Store.encounterStore.getById(id);
+    if (!e) return;
+    state.encounterId = e.id;
+    state.encounterSavedAt = e.updatedAt;
+    fillEncounterForm(e);
+    state.dirty = false;
+    showPage("patients");
+    updateSaveStatus();
+    updateActionGates();
+    showStage(state.stage || "history");
+    if ($("encounterWorkspace")) {
+      $("encounterWorkspace").scrollIntoView({ behavior: "smooth", block: "start" });
+    }
   }
 
   function readPatientFromForm() {
@@ -460,6 +550,7 @@
     );
     state.patientId = null;
     state.patientSavedAt = null;
+    state.editingNewPatient = true;
     state.ageFromDob = false;
     $("age").readOnly = false;
     $("ageHint").textContent =
@@ -542,12 +633,12 @@
     $("duplicateWarning").classList.add("hidden");
     state.patientId = result.patient.id;
     state.patientSavedAt = result.patient.updatedAt;
+    state.editingNewPatient = false;
     refreshEncounterList(state.patientId, state.encounterId);
     state.dirty = state.encounterStarted ? state.dirty : false;
     updateSaveStatus();
     updateStoreMeta();
     updateActionGates();
-    updateWorkflowGuide();
     return result.patient;
   }
 
@@ -676,7 +767,6 @@
     buildSummary();
     showStage(state.stage || "history");
     updateActionGates();
-    updateWorkflowGuide();
   }
 
   function clearEncounterForm(keepPatient) {
@@ -736,7 +826,6 @@
       /* noop */
     }
     updateActionGates();
-    updateWorkflowGuide();
   }
 
   function startNewEncounter() {
@@ -747,10 +836,13 @@
     clearEncounterForm(true);
     state.encounterStarted = true;
     state.dirty = true;
+    showPage("patients");
     showStage("history");
     updateSaveStatus();
     updateActionGates();
-    updateWorkflowGuide();
+    if ($("encounterWorkspace")) {
+      $("encounterWorkspace").scrollIntoView({ behavior: "smooth", block: "start" });
+    }
   }
 
   function setPlanStatus(status, approvedAt) {
@@ -794,7 +886,6 @@
     refreshEncounterList(state.patientId, state.encounterId);
     updateStoreMeta();
     updateActionGates();
-    updateWorkflowGuide();
   }
 
   function loadUnitFields() {
@@ -1354,7 +1445,11 @@
     a.click();
     URL.revokeObjectURL(url);
     state.lastBackupAt = Store.nowIso();
+    try {
+      localStorage.setItem(LAST_BACKUP_KEY, state.lastBackupAt);
+    } catch (e) {}
     updateSaveStatus();
+    updateLastBackupLine();
   }
 
   function importBackup(file) {
@@ -1370,7 +1465,7 @@
         if (mode === "replace") {
           if (
             !confirm(
-              "Replace will overwrite all local patients and encounters. Have you exported a backup? Continue?"
+              "Replace will overwrite all local patients and encounters. Have you downloaded a backup? Continue?"
             )
           ) {
             return;
@@ -1385,7 +1480,7 @@
         updateActionGates();
         if (!report.ok) {
           alert(
-            "Import failed validation.\n" +
+            "Restore failed validation.\n" +
               (report.validation && report.validation.errors
                 ? report.validation.errors.join("\n")
                 : "See report.")
@@ -1396,7 +1491,7 @@
               ? "\nConverted: " + report.validation.converted
               : "";
           alert(
-            "Import complete." +
+            "Restore complete." +
               converted +
               "\nAdded: " +
               report.added +
@@ -1409,36 +1504,95 @@
           );
         }
       } catch (err) {
-        alert("Invalid JSON backup: " + err.message);
+        alert("Invalid backup file: " + err.message);
       }
     };
     reader.readAsText(file);
   }
 
-  function resetDemo() {
-    if (
-      !confirm(
-        "Reset will delete all local patients and encounters on this device.\n\nHave you exported a JSON backup?\n\nPress OK only if you have a backup or accept permanent data loss."
+  function getFocusable(container) {
+    return Array.prototype.slice.call(
+      container.querySelectorAll(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
       )
-    ) {
-      return;
+    );
+  }
+
+  function openModal(id) {
+    const modal = $(id);
+    if (!modal) return;
+    state.lastFocused = document.activeElement;
+    state.modalOpen = id;
+    modal.classList.remove("hidden");
+    const focusables = getFocusable(modal);
+    if (focusables.length) focusables[0].focus();
+  }
+
+  function closeModal(id) {
+    const modal = $(id);
+    if (!modal) return;
+    modal.classList.add("hidden");
+    if (state.modalOpen === id) state.modalOpen = null;
+    if (state.lastFocused && state.lastFocused.focus) {
+      try {
+        state.lastFocused.focus();
+      } catch (e) {}
     }
-    if (!confirm("Final confirmation: reset all demo data now?")) return;
+  }
+
+  function openDeleteModal() {
+    const meta = Store.getMeta();
+    $("deleteCountText").textContent =
+      "This will permanently delete " +
+      meta.patientCount +
+      " patient(s) and " +
+      meta.encounterCount +
+      " encounter(s) stored in this browser.";
+    setVal("deleteConfirmInput", "");
+    $("btnDeleteConfirm").disabled = true;
+    openModal("deleteModal");
+  }
+
+  function performDeleteAll() {
     Store.resetAll();
+    state.editingNewPatient = false;
     clearPatientForm();
+    state.editingNewPatient = false;
     clearEncounterForm(false);
     refreshEncounterList(null);
-    state.lastBackupAt = null;
     state.dirty = false;
     updateSaveStatus();
     updateStoreMeta();
     updateActionGates();
-    updateWorkflowGuide();
-    alert("Demo data reset.");
+    closeModal("deleteModal");
+    showPage("settings");
+    alert("All locally saved records were deleted.");
+  }
+
+  function dismissOnboarding() {
+    try {
+      localStorage.setItem(ONBOARDING_KEY, "1");
+    } catch (e) {}
+    closeModal("onboardingModal");
   }
 
   // --- Events ---
   function bind() {
+    document.querySelectorAll(".top-nav-btn").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        showPage(btn.getAttribute("data-page"));
+      });
+    });
+
+    $("btnHowItWorks").addEventListener("click", function () {
+      showPage("help");
+    });
+    $("btnOnboardingHelp").addEventListener("click", function () {
+      dismissOnboarding();
+      showPage("help");
+    });
+    $("btnOnboardingDismiss").addEventListener("click", dismissOnboarding);
+
     $("btnSearch").addEventListener("click", runSearch);
     $("searchQuery").addEventListener("keydown", function (ev) {
       if (ev.key === "Enter") {
@@ -1451,26 +1605,15 @@
       if (!getVal("searchQuery").trim()) $("searchResults").innerHTML = "";
     });
 
-    $("encounterList").addEventListener("change", function () {
-      const id = getVal("encounterList");
-      if (!id) return;
-      const e = Store.encounterStore.getById(id);
-      if (!e) return;
-      state.encounterId = e.id;
-      state.encounterSavedAt = e.updatedAt;
-      fillEncounterForm(e);
-      state.dirty = false;
-      updateSaveStatus();
-    });
-
     $("btnNewPatient").addEventListener("click", function () {
       clearPatientForm();
       clearEncounterForm(false);
       refreshEncounterList(null);
       state.dirty = false;
+      showPage("patients");
       updateSaveStatus();
       updateActionGates();
-      updateWorkflowGuide();
+      $("name").focus();
     });
 
     $("btnSavePatient").addEventListener("click", function () {
@@ -1478,6 +1621,17 @@
     });
 
     $("btnNewEncounter").addEventListener("click", startNewEncounter);
+    $("btnNewEncounterEmpty").addEventListener("click", startNewEncounter);
+    $("btnBackToPatient").addEventListener("click", function () {
+      if (state.dirty) {
+        if (!confirm("Leave encounter without saving unsaved changes?")) return;
+      }
+      clearEncounterForm(true);
+      refreshEncounterList(state.patientId);
+      updateSaveStatus();
+      updateActionGates();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
     $("btnSaveEncounter").addEventListener("click", saveEncounter);
     $("unit").addEventListener("change", function () {
       loadUnitFields();
@@ -1547,21 +1701,58 @@
       if (file) importBackup(file);
       ev.target.value = "";
     });
-    $("btnReset").addEventListener("click", resetDemo);
+    $("btnReset").addEventListener("click", openDeleteModal);
+    $("btnDeleteCancel").addEventListener("click", function () {
+      closeModal("deleteModal");
+    });
+    $("deleteConfirmInput").addEventListener("input", function () {
+      $("btnDeleteConfirm").disabled =
+        getVal("deleteConfirmInput").trim() !== "DELETE ALL RECORDS";
+    });
+    $("btnDeleteConfirm").addEventListener("click", function () {
+      if (getVal("deleteConfirmInput").trim() !== "DELETE ALL RECORDS") return;
+      performDeleteAll();
+    });
 
-    $("dismissPrivacy").addEventListener("click", function () {
-      $("privacyBanner").classList.add("hidden");
-      try {
-        localStorage.setItem("smartClerking:privacyDismissed", "1");
-      } catch (e) {}
+    document.querySelectorAll("[data-close]").forEach(function (el) {
+      el.addEventListener("click", function () {
+        const which = el.getAttribute("data-close");
+        if (which === "onboarding") dismissOnboarding();
+        if (which === "delete") closeModal("deleteModal");
+      });
+    });
+
+    document.addEventListener("keydown", function (ev) {
+      if (ev.key === "Escape" && state.modalOpen) {
+        if (state.modalOpen === "onboardingModal") dismissOnboarding();
+        else if (state.modalOpen === "deleteModal") closeModal("deleteModal");
+      }
+      if (ev.key === "Tab" && state.modalOpen) {
+        const modal = $(state.modalOpen);
+        const focusables = getFocusable(modal);
+        if (!focusables.length) return;
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        if (ev.shiftKey && document.activeElement === first) {
+          ev.preventDefault();
+          last.focus();
+        } else if (!ev.shiftKey && document.activeElement === last) {
+          ev.preventDefault();
+          first.focus();
+        }
+      }
     });
 
     document.querySelectorAll(".stage-tab").forEach(function (tab) {
       tab.addEventListener("click", function () {
-        if (tab.disabled) return;
         showStage(tab.getAttribute("data-stage"));
       });
     });
+    if ($("stageSelect")) {
+      $("stageSelect").addEventListener("change", function () {
+        showStage(getVal("stageSelect"));
+      });
+    }
     document.querySelectorAll(".stage-next").forEach(function (btn) {
       btn.addEventListener("click", function () {
         showStage(btn.getAttribute("data-next"));
@@ -1583,7 +1774,9 @@
       if (
         el.id === "encounterList" ||
         el.id === "searchQuery" ||
-        el.id === "importFile"
+        el.id === "importFile" ||
+        el.id === "deleteConfirmInput" ||
+        el.id === "stageSelect"
       ) {
         return;
       }
@@ -1617,16 +1810,21 @@
 
   function init() {
     Store.migrateFromLegacyKeyIfNeeded();
-    if (localStorage.getItem("smartClerking:privacyDismissed") === "1") {
-      $("privacyBanner").classList.add("hidden");
+    try {
+      state.lastBackupAt = localStorage.getItem(LAST_BACKUP_KEY) || null;
+    } catch (e) {
+      state.lastBackupAt = null;
     }
     bind();
+    showPage("patients");
     updateStoreMeta();
     updateSaveStatus();
     updateActionGates();
-    updateWorkflowGuide();
     refreshAlerts();
     refreshEncounterList(null);
+    if (localStorage.getItem(ONBOARDING_KEY) !== "1") {
+      openModal("onboardingModal");
+    }
   }
 
   window.addEventListener("DOMContentLoaded", init);
