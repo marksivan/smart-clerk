@@ -1,3 +1,3 @@
 # Smart Clerking Assistant
 
-Admin/clinician-facing clerking workspace (MVP)
+Admin/clinician-facing clerking workspace
