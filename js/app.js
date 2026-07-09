@@ -30,9 +30,62 @@
 
   const LAST_BACKUP_KEY = "smartClerking:lastBackupAt";
   const ONBOARDING_KEY = "smartClerking:onboardingDismissed";
+  const THEME_KEY = "smartClerking:theme";
 
   function $(id) {
     return document.getElementById(id);
+  }
+
+  function getPreferredTheme() {
+    try {
+      const stored = localStorage.getItem(THEME_KEY);
+      if (stored === "dark" || stored === "light") return stored;
+    } catch (e) {}
+    if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+      return "dark";
+    }
+    return "light";
+  }
+
+  function applyTheme(theme) {
+    const next = theme === "dark" ? "dark" : "light";
+    document.documentElement.setAttribute("data-theme", next);
+    try {
+      localStorage.setItem(THEME_KEY, next);
+    } catch (e) {}
+    const btn = $("btnThemeToggle");
+    const label = $("themeToggleLabel");
+    if (label) {
+      label.textContent = next === "dark" ? "Light mode" : "Dark mode";
+    }
+    if (btn) {
+      btn.setAttribute(
+        "aria-label",
+        next === "dark" ? "Switch to light mode" : "Switch to dark mode"
+      );
+      btn.title = "Toggle light / dark mode";
+    }
+    return next;
+  }
+
+  function toggleTheme() {
+    const current =
+      document.documentElement.getAttribute("data-theme") || getPreferredTheme();
+    applyTheme(current === "dark" ? "light" : "dark");
+  }
+
+  function goHome() {
+    if (state.encounterStarted && state.dirty) {
+      if (!confirm("Leave encounter without saving unsaved changes?")) return;
+    }
+    if (state.encounterStarted) {
+      clearEncounterForm(true);
+    }
+    showPage("patients");
+    refreshEncounterList(state.patientId);
+    updateSaveStatus();
+    updateActionGates();
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function getVal(id) {
@@ -2116,6 +2169,18 @@
         showPage(navBtn.getAttribute("data-page"));
         return;
       }
+      const brand = ev.target.closest && ev.target.closest("#btnBrandHome");
+      if (brand) {
+        ev.preventDefault();
+        goHome();
+        return;
+      }
+      const themeBtn = ev.target.closest && ev.target.closest("#btnThemeToggle");
+      if (themeBtn) {
+        ev.preventDefault();
+        toggleTheme();
+        return;
+      }
       const how = ev.target.closest && ev.target.closest("#btnHowItWorks");
       if (how) {
         ev.preventDefault();
@@ -2400,6 +2465,7 @@
 
   function init() {
     Store.migrateFromLegacyKeyIfNeeded();
+    applyTheme(getPreferredTheme());
     try {
       state.lastBackupAt = localStorage.getItem(LAST_BACKUP_KEY) || null;
     } catch (e) {
