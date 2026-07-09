@@ -1104,6 +1104,39 @@ button,
   font-size: 0.85rem;
 }
 
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 1.5rem;
+  transform: translateX(-50%);
+  z-index: 1100;
+  min-width: 16rem;
+  max-width: min(28rem, calc(100vw - 2rem));
+  padding: 0.85rem 1.15rem;
+  border-radius: 0.35rem;
+  font-weight: 700;
+  font-size: 0.95rem;
+  text-align: center;
+  box-shadow: 0 8px 24px rgba(7, 59, 82, 0.18);
+  pointer-events: none;
+}
+
+.toast.success {
+  background: #e7f4ec;
+  border: 1px solid #9bc5ab;
+  color: #145c38;
+}
+
+.toast.error {
+  background: var(--danger-bg);
+  border: 1px solid #e8b4b4;
+  color: var(--danger);
+}
+
+.toast.hidden {
+  display: none !important;
+}
+
 /* Modals */
 .modal {
   position: fixed;
