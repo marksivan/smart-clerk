@@ -25,6 +25,7 @@
     editingNewPatient: false,
     modalOpen: null,
     lastFocused: null,
+    toastTimer: null,
   };
 
   const LAST_BACKUP_KEY = "smartClerking:lastBackupAt";
@@ -1212,37 +1213,98 @@
       (approvedAt ? " · " + formatTime(approvedAt) : "");
   }
 
-  function saveEncounter() {
-    if (!state.patientId) {
-      const p = savePatient(false);
-      if (!p) return;
-    }
-    if (!state.encounterStarted) {
-      alert("Start an encounter first.");
+  function showToast(message, type) {
+    const el = $("toast");
+    if (!el) {
+      // Fallback if toast node is missing
+      try {
+        alert(message);
+      } catch (e) {}
       return;
     }
-    if (!validateBp()) {
-      alert("Fix blood pressure format (e.g. 120/80) before saving.");
-      showStage("examination");
-      return;
+    el.textContent = message;
+    el.className = "toast " + (type || "success");
+    el.removeAttribute("hidden");
+    el.classList.remove("hidden");
+    el.style.display = "block";
+    if (state.toastTimer) clearTimeout(state.toastTimer);
+    state.toastTimer = setTimeout(function () {
+      el.classList.add("hidden");
+      el.style.display = "none";
+    }, 3500);
+  }
+
+  function returnToPatientHome() {
+    try {
+      clearEncounterForm(true);
+    } catch (e) {
+      state.encounterStarted = false;
+      state.encounterId = null;
+      if ($("encounterWorkspace")) $("encounterWorkspace").classList.add("hidden");
+      if ($("patientsHome")) $("patientsHome").classList.remove("hidden");
     }
-    const encounter = readEncounterFromForm();
-    if (!encounter.patientId) {
-      alert("Save or select a patient first.");
-      return;
-    }
-    const result = Store.encounterStore.save(encounter);
-    if (!result.ok) {
-      alert("Could not save encounter: " + (result.reason || "unknown"));
-      return;
-    }
-    state.encounterId = result.encounter.id;
-    state.encounterSavedAt = result.encounter.updatedAt;
-    state.dirty = false;
+    showPage("patients");
+    refreshEncounterList(state.patientId);
     updateSaveStatus();
-    refreshEncounterList(state.patientId, state.encounterId);
-    updateStoreMeta();
     updateActionGates();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function saveEncounter(options) {
+    options = options || {};
+    const silent = !!options.silent;
+    try {
+      if (!state.patientId) {
+        const p = savePatient(false);
+        if (!p) return false;
+      }
+      if (!state.encounterStarted) {
+        if (!silent) alert("Start an encounter first.");
+        return false;
+      }
+      if (!validateBp()) {
+        if (!silent) {
+          alert("Fix blood pressure format (e.g. 120/80) before saving.");
+          showStage("examination");
+        }
+        return false;
+      }
+      const encounter = readEncounterFromForm();
+      if (!encounter.patientId) {
+        if (!silent) alert("Save or select a patient first.");
+        return false;
+      }
+      const result = Store.encounterStore.save(encounter);
+      if (!result.ok) {
+        if (!silent) {
+          showToast(
+            "Could not save encounter: " + (result.reason || "unknown"),
+            "error"
+          );
+        }
+        return false;
+      }
+      state.encounterId = result.encounter.id;
+      state.encounterSavedAt = result.encounter.updatedAt;
+      state.dirty = false;
+      updateSaveStatus();
+      refreshEncounterList(state.patientId, state.encounterId);
+      updateStoreMeta();
+
+      if (!silent) {
+        showToast("Encounter saved successfully", "success");
+        returnToPatientHome();
+      } else {
+        updateActionGates();
+      }
+      return true;
+    } catch (err) {
+      console.error("saveEncounter failed", err);
+      if (!silent) {
+        showToast("Save failed. Please try again.", "error");
+      }
+      return false;
+    }
   }
 
   function loadUnitFields() {
@@ -2137,7 +2199,19 @@
       updateActionGates();
       window.scrollTo({ top: 0, behavior: "smooth" });
     });
-    $("btnSaveEncounter").addEventListener("click", saveEncounter);
+    document.addEventListener("click", function (ev) {
+      const saveBtn =
+        ev.target &&
+        ev.target.closest &&
+        ev.target.closest("#btnSaveEncounter");
+      if (!saveBtn) return;
+      ev.preventDefault();
+      if (saveBtn.disabled) {
+        showToast("Start or open an encounter before saving.", "error");
+        return;
+      }
+      saveEncounter({ silent: false });
+    });
     $("unit").addEventListener("change", function () {
       loadUnitFields();
       markDirty();
@@ -2282,7 +2356,7 @@
 
     setInterval(function () {
       if (state.dirty && state.patientId && state.encounterStarted) {
-        saveEncounter();
+        saveEncounter({ silent: true });
       }
     }, 30000);
 

@@ -1094,6 +1094,14 @@ button,
   bottom: 0;
   background: var(--surface);
   padding-top: 0.75rem;
+  z-index: 12;
+}
+
+.sticky-actions .btn-primary,
+.sticky-actions .btn-secondary {
+  pointer-events: auto;
+  position: relative;
+  z-index: 13;
 }
 
 .app-footer {
@@ -1102,6 +1110,39 @@ button,
   border-top: 1px solid var(--border);
   color: var(--ink-muted);
   font-size: 0.85rem;
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 1.75rem;
+  transform: translateX(-50%);
+  z-index: 2000;
+  min-width: 16rem;
+  max-width: min(28rem, calc(100vw - 2rem));
+  padding: 0.95rem 1.25rem;
+  border-radius: 0.35rem;
+  font-weight: 700;
+  font-size: 1rem;
+  text-align: center;
+  box-shadow: 0 10px 28px rgba(7, 59, 82, 0.22);
+  pointer-events: none;
+}
+
+.toast.success {
+  background: #1b6b4a;
+  border: 1px solid #145c38;
+  color: #ffffff;
+}
+
+.toast.error {
+  background: var(--danger-bg);
+  border: 1px solid #e8b4b4;
+  color: var(--danger);
+}
+
+.toast.hidden {
+  display: none !important;
 }
 
 /* Modals */
