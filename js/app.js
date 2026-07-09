@@ -1554,6 +1554,18 @@
     updateActionGates();
   }
 
+  function findingLabel(entry) {
+    if (!entry) return "";
+    if (typeof entry === "string") {
+      return Knowledge.labelForSymptom(entry) || entry;
+    }
+    if (entry.label) return entry.label;
+    if (entry.symptomId) {
+      return Knowledge.labelForSymptom(entry.symptomId) || entry.symptomId;
+    }
+    return String(entry);
+  }
+
   function renderDifferentials() {
     const panel = $("differentialPanel");
     if (!state.conditionCandidates.length) {
@@ -1572,20 +1584,17 @@
         (isSelected ? " selected" : "") +
         (isRejected ? " rejected" : "");
       const support = (c.supportingFindings || [])
-        .map(function (id) {
-          return Knowledge.labelForSymptom(id);
-        })
+        .map(findingLabel)
+        .filter(Boolean)
         .join(", ");
       const contra = (c.contradictingFindings || [])
-        .map(function (id) {
-          return Knowledge.labelForSymptom(id);
-        })
+        .map(findingLabel)
+        .filter(Boolean)
         .join(", ");
-      const missing = (c.missingFindings || [])
+      const missing = (c.missingFindings || c.missingCriticalFindings || [])
         .slice(0, 4)
-        .map(function (id) {
-          return Knowledge.labelForSymptom(id);
-        })
+        .map(findingLabel)
+        .filter(Boolean)
         .join(", ");
       let statusTag = '<span class="tag-system">Suggested by system</span>';
       if (isSelected) {
