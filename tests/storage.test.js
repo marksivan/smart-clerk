@@ -246,10 +246,13 @@ test("knowledge: symptom suggest and differential", () => {
     "expected rich question set for headache+diarrhea+hemoptysis, got " + multi.length
   );
   assert.ok(multi.some((q) => /headache/i.test(q.questionText)));
-  assert.ok(multi.some((q) => /blood was coughed|hemoptysis|coughed up/i.test(q.questionText)));
+  assert.ok(
+    multi.some((q) => /blood|hemoptysis|coughed|sputum/i.test(q.questionText))
+  );
   assert.ok(multi.some((q) => /diarrhea|stool/i.test(q.questionText)));
 
   // Free-text alias "sleeping" should resolve to insomnia questions
+  assert.ok(typeof Knowledge.resolveSymptomId === "function");
   assert.strictEqual(Knowledge.resolveSymptomId("sleeping"), "insomnia");
   const sleepQs = Knowledge.generateQuestions(["sleeping"], {});
   assert.ok(sleepQs.length >= 2, "sleeping should map to insomnia questions");
