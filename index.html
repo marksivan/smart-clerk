@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Smart Clerking Assistant</title>
-  <link rel="stylesheet" href="styles.css?v=20260709a">
+  <link rel="stylesheet" href="styles.css?v=20260709b">
 </head>
 <body>
   <div class="app">
@@ -43,7 +43,7 @@
               <div class="search-block">
                 <label for="searchQuery">Search patients</label>
                 <div class="search-row">
-                  <input id="searchQuery" placeholder="Name, local ID, phone, or date of birth" autocomplete="off">
+                    <input id="searchQuery" placeholder="First name, last name, or 6-digit ID" autocomplete="off">
                   <button type="button" id="btnSearch" class="btn-secondary">Search</button>
                 </div>
                 <div id="searchResults" class="search-results" role="listbox" aria-label="Matching patients"></div>
@@ -69,12 +69,21 @@
 
                 <div class="form-grid">
                   <div>
-                    <label for="name">Name *</label>
-                    <input id="name" autocomplete="off" required>
+                    <label for="firstName">First name *</label>
+                    <input id="firstName" autocomplete="given-name" required>
+                  </div>
+                  <div>
+                    <label for="lastName">Last name *</label>
+                    <input id="lastName" autocomplete="family-name" required>
+                  </div>
+                  <div>
+                    <label for="middleName">Middle name <span class="pref">(optional)</span></label>
+                    <input id="middleName" autocomplete="additional-name">
                   </div>
                   <div>
                     <label for="localPatientId">Local patient ID</label>
-                    <input id="localPatientId" autocomplete="off">
+                    <input id="localPatientId" autocomplete="off" readonly>
+                    <p class="field-hint" id="localIdHint">Assigned automatically for new patients (6 digits).</p>
                   </div>
                   <div>
                     <label for="dob">Date of birth <span class="pref">(preferred)</span></label>
@@ -107,6 +116,8 @@
                     <input id="address">
                   </div>
                 </div>
+                <!-- Keep legacy id for any residual references; hidden -->
+                <input id="name" type="hidden" value="">
 
                 <div class="btn-row patient-actions">
                   <button type="button" id="btnSavePatient" class="btn-primary">Save patient</button>
@@ -535,8 +546,8 @@
     </div>
   </div>
 
-  <script src="js/localStore.js?v=20260709a"></script>
-  <script src="js/knowledge.js?v=20260709a"></script>
-  <script src="js/app.js?v=20260709a"></script>
+  <script src="js/localStore.js?v=20260709b"></script>
+  <script src="js/knowledge.js?v=20260709b"></script>
+  <script src="js/app.js?v=20260709b"></script>
 </body>
 </html>

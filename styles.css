@@ -295,12 +295,9 @@ select {
   margin-bottom: 0.35rem;
 }
 
-input:disabled,
-textarea:disabled,
-select:disabled,
-button:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
+input[readonly] {
+  background: #f3f7fa;
+  color: var(--ink);
 }
 
 textarea {

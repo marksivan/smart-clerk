@@ -76,8 +76,8 @@
       patientLine.textContent = "Patient: not selected";
     } else {
       const p = Store.patientStore.getById(state.patientId);
-      const name = p && p.name ? p.name : "Selected";
-      patientLine.textContent = "Patient: " + name;
+      const name = p && patientDisplayName(p);
+      patientLine.textContent = "Patient: " + (name || "Selected");
     }
 
     if (!state.encounterStarted) {
@@ -395,7 +395,7 @@
     const allergy = latestAllergyNote(state.patientId);
     card.innerHTML =
       '<p class="ps-name">' +
-      escapeHtml(p.name || "Unnamed") +
+      escapeHtml(patientDisplayName(p)) +
       "</p>" +
       '<p class="ps-row">' +
       escapeHtml(p.localPatientId ? "ID: " + p.localPatientId : "No local ID") +
@@ -437,7 +437,7 @@
     el.className = "patient-context patient-summary-inline";
     el.innerHTML =
       "<strong>" +
-      escapeHtml(p.name || "Unnamed") +
+      escapeHtml(patientDisplayName(p)) +
       "</strong><br>" +
       escapeHtml(
         [
@@ -478,7 +478,7 @@
       const encCount = Store.encounterStore.getByPatientId(p.id).length;
       btn.innerHTML =
         "<strong>" +
-        escapeHtml(p.name || "Unnamed") +
+        escapeHtml(patientDisplayName(p)) +
         "</strong><span>" +
         escapeHtml(
           [
@@ -616,7 +616,9 @@
       const encCount = Store.encounterStore.getByPatientId(p.id).length;
       const exact =
         qNorm &&
-        (normalize(p.name) === qNorm ||
+        (normalize(patientDisplayName(p)) === qNorm ||
+          normalize(p.firstName) === qNorm ||
+          normalize(p.lastName) === qNorm ||
           normalize(p.localPatientId) === qNorm ||
           normalize(p.phone) === qNorm);
       const row = document.createElement("button");
@@ -625,7 +627,7 @@
       row.setAttribute("role", "option");
       row.innerHTML =
         "<div><div class=\"sr-name\">" +
-        escapeHtml(p.name || "Unnamed") +
+        escapeHtml(patientDisplayName(p)) +
         (exact ? ' <span class="tag-confirmed">Exact match</span>' : "") +
         "</div>" +
         "<div class=\"sr-meta\">" +
@@ -789,10 +791,26 @@
     }
   }
 
+  function patientDisplayName(p) {
+    if (!p) return "Unnamed";
+    if (Store.composeDisplayName) {
+      return Store.composeDisplayName(p) || p.name || "Unnamed";
+    }
+    return p.name || "Unnamed";
+  }
+
   function readPatientFromForm() {
+    const firstName = getVal("firstName").trim();
+    const middleName = getVal("middleName").trim();
+    const lastName = getVal("lastName").trim();
+    const name = [firstName, middleName, lastName].filter(Boolean).join(" ");
+    setVal("name", name);
     return {
       id: state.patientId || undefined,
-      name: getVal("name").trim(),
+      firstName: firstName,
+      middleName: middleName,
+      lastName: lastName,
+      name: name,
       localPatientId: getVal("localPatientId").trim(),
       age: getVal("age").trim(),
       dob: getVal("dob").trim(),
@@ -804,8 +822,28 @@
   }
 
   function fillPatientForm(p) {
-    setVal("name", p.name);
-    setVal("localPatientId", p.localPatientId);
+    let first = p.firstName || "";
+    let middle = p.middleName || "";
+    let last = p.lastName || "";
+    if (!first && !last && p.name && Store.splitFullName) {
+      const split = Store.splitFullName(p.name);
+      first = split.firstName;
+      middle = split.middleName;
+      last = split.lastName;
+    }
+    setVal("firstName", first);
+    setVal("middleName", middle);
+    setVal("lastName", last);
+    setVal("name", patientDisplayName(p));
+    setVal("localPatientId", p.localPatientId || "");
+    if ($("localPatientId")) {
+      $("localPatientId").readOnly = true;
+    }
+    if ($("localIdHint")) {
+      $("localIdHint").textContent = p.localPatientId
+        ? "Local ID is assigned and unique."
+        : "Assigned automatically for new patients (6 digits).";
+    }
     setVal("dob", p.dob);
     if (p.dob) {
       const calc = ageFromDateOfBirth(p.dob);
@@ -830,11 +868,21 @@
   }
 
   function clearPatientForm() {
-    ["name", "localPatientId", "age", "dob", "sex", "phone", "address", "occupation"].forEach(
-      function (id) {
-        setVal(id, "");
-      }
-    );
+    [
+      "firstName",
+      "middleName",
+      "lastName",
+      "name",
+      "localPatientId",
+      "age",
+      "dob",
+      "sex",
+      "phone",
+      "address",
+      "occupation",
+    ].forEach(function (id) {
+      setVal(id, "");
+    });
     state.patientId = null;
     state.patientSavedAt = null;
     state.editingNewPatient = true;
@@ -844,12 +892,18 @@
       "Enter DOB to calculate age, or estimated age if DOB unknown.";
     $("duplicateWarning").classList.add("hidden");
     $("searchResults").innerHTML = "";
+    setVal("localPatientId", "");
+    if ($("localIdHint")) {
+      $("localIdHint").textContent =
+        "A unique 6-digit ID is assigned automatically when you save.";
+    }
+    if ($("localPatientId")) $("localPatientId").readOnly = true;
   }
 
   function savePatient(force) {
     const patient = readPatientFromForm();
-    if (!patient.name) {
-      alert("Patient name is required.");
+    if (!patient.firstName || !patient.lastName) {
+      alert("First name and last name are required.");
       return null;
     }
     if (patient.dob && patient.age) {
@@ -883,7 +937,7 @@
               "<li><button type=\"button\" class=\"linkish pick-dup\" data-id=\"" +
               escapeHtml(d.id) +
               "\">" +
-              escapeHtml(d.name) +
+              escapeHtml(patientDisplayName(d)) +
               "</button> — " +
               escapeHtml(
                 [
@@ -913,6 +967,14 @@
       });
       return null;
     }
+    if (!result.ok && result.reason === "duplicate_local_id") {
+      alert(result.message || "That local patient ID is already in use.");
+      return null;
+    }
+    if (!result.ok && result.reason === "validation") {
+      alert(result.message || "Could not save patient.");
+      return null;
+    }
     if (!result.ok) {
       alert("Could not save patient: " + (result.reason || "unknown"));
       return null;
@@ -921,6 +983,7 @@
     state.patientId = result.patient.id;
     state.patientSavedAt = result.patient.updatedAt;
     state.editingNewPatient = false;
+    fillPatientForm(result.patient);
     refreshEncounterList(state.patientId, state.encounterId);
     state.dirty = state.encounterStarted ? state.dirty : false;
     updateSaveStatus();
@@ -1720,7 +1783,7 @@
     s += "BIODATA\n";
     s +=
       "Name: " +
-      (p.name || "") +
+      patientDisplayName(p) +
       ", DOB: " +
       (p.dob || "—") +
       ", Age: " +
@@ -2055,7 +2118,7 @@
       showPage("patients");
       updateSaveStatus();
       updateActionGates();
-      $("name").focus();
+      $("firstName").focus();
     });
 
     $("btnSavePatient").addEventListener("click", function () {
