@@ -4,14 +4,25 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Smart Clerking Assistant</title>
-  <link rel="stylesheet" href="styles.css?v=20260709d">
+  <link rel="stylesheet" href="styles.css?v=20260709e">
+  <script>
+    (function () {
+      try {
+        var theme = localStorage.getItem("smartClerking:theme");
+        if (theme === "dark" || theme === "light") {
+          document.documentElement.setAttribute("data-theme", theme);
+        }
+      } catch (e) {}
+    })();
+  </script>
 </head>
 <body>
   <div class="app">
     <header class="app-header">
       <div class="brand-block">
-        <h1>Smart Clerking Assistant</h1>
-        <p class="subtitle">Admin / clinician workspace — patients do not use this app</p>
+        <button type="button" id="btnBrandHome" class="brand-home" aria-label="Go to Patients home">
+          <span class="brand-title">Smart Clerking Assistant</span>
+        </button>
       </div>
       <div class="header-meta">
         <div id="saveStatus" class="save-status" aria-live="polite">
@@ -19,7 +30,10 @@
           <div class="save-line" id="saveEncounterLine">Encounter: none</div>
           <div class="save-line muted" id="saveChangeLine">No unsaved changes</div>
         </div>
-        <span class="badge-warn">Decision support — clinician verification required</span>
+        <button type="button" id="btnThemeToggle" class="theme-toggle" aria-label="Switch to dark mode" title="Toggle light / dark mode">
+          <span class="theme-toggle-icon" aria-hidden="true">◐</span>
+          <span class="theme-toggle-label" id="themeToggleLabel">Dark mode</span>
+        </button>
       </div>
     </header>
 
@@ -548,8 +562,8 @@
     </div>
   </div>
 
-  <script src="js/localStore.js?v=20260709d"></script>
-  <script src="js/knowledge.js?v=20260709d"></script>
-  <script src="js/app.js?v=20260709d"></script>
+  <script src="js/localStore.js?v=20260709e"></script>
+  <script src="js/knowledge.js?v=20260709e"></script>
+  <script src="js/app.js?v=20260709e"></script>
 </body>
 </html>
