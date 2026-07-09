@@ -236,6 +236,24 @@ test("knowledge: symptom suggest and differential", () => {
   const qs = Knowledge.generateQuestions(["cough", "fever"], { sex: "female" });
   assert.ok(qs.length > 0);
 
+  // Multi-symptom packs should return more than a single diarrhea red-flag
+  const multi = Knowledge.generateQuestions(
+    ["headache", "diarrhea", "hemoptysis"],
+    { sex: "female" }
+  );
+  assert.ok(
+    multi.length >= 8,
+    "expected rich question set for headache+diarrhea+hemoptysis, got " + multi.length
+  );
+  assert.ok(multi.some((q) => /headache/i.test(q.questionText)));
+  assert.ok(multi.some((q) => /blood was coughed|hemoptysis|coughed up/i.test(q.questionText)));
+  assert.ok(multi.some((q) => /diarrhea|stool/i.test(q.questionText)));
+
+  // Free-text alias "sleeping" should resolve to insomnia questions
+  assert.strictEqual(Knowledge.resolveSymptomId("sleeping"), "insomnia");
+  const sleepQs = Knowledge.generateQuestions(["sleeping"], {});
+  assert.ok(sleepQs.length >= 2, "sleeping should map to insomnia questions");
+
   const ranked = Knowledge.analyzeDifferentials({
     findings: [
       { symptomId: "cough", status: "confirmed" },

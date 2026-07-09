@@ -1241,6 +1241,13 @@
 
   function addSymptom(label, symptomId, status) {
     status = status || "confirmed";
+    if (!symptomId && Knowledge.resolveSymptomId) {
+      symptomId = Knowledge.resolveSymptomId(label);
+      if (symptomId) {
+        const known = Knowledge.labelForSymptom(symptomId);
+        if (known) label = known;
+      }
+    }
     const existing = state.findings.find(function (f) {
       return (
         (symptomId && f.symptomId === symptomId) ||
@@ -1294,6 +1301,29 @@
   }
 
   // --- Questions ---
+  function resolveFindingIds() {
+    // Backfill symptomId for free-text chips using knowledge aliases
+    state.findings.forEach(function (f) {
+      if (!f.symptomId && f.label && Knowledge.resolveSymptomId) {
+        const resolved = Knowledge.resolveSymptomId(f.label);
+        if (resolved) {
+          f.symptomId = resolved;
+          const known = Knowledge.labelForSymptom(resolved);
+          if (known) f.label = known;
+        }
+      }
+    });
+    renderSymptomChips();
+    return state.findings
+      .filter(function (f) {
+        return f.status === "confirmed";
+      })
+      .map(function (f) {
+        return f.symptomId || f.label;
+      })
+      .filter(Boolean);
+  }
+
   function generateQuestions() {
     if (!confirmedSymptoms().length) {
       alert("Confirm at least one symptom first.");
@@ -1304,17 +1334,24 @@
         addSymptom(m.label, m.id, "confirmed");
       });
     }
-    const ids = state.findings
-      .filter(function (f) {
-        return f.status === "confirmed" && f.symptomId;
-      })
-      .map(function (f) {
-        return f.symptomId;
-      });
+    const ids = resolveFindingIds();
     const patient = state.patientId
       ? Store.patientStore.getById(state.patientId)
       : readPatientFromForm();
     const questions = Knowledge.generateQuestions(ids, patient);
+    if (!questions.length) {
+      const labels = confirmedSymptoms()
+        .map(function (f) {
+          return f.label;
+        })
+        .join(", ");
+      $("questionsPanel").innerHTML =
+        '<p class="muted">No follow-up questions are mapped yet for: <strong>' +
+        escapeHtml(labels || "current symptoms") +
+        "</strong>. Add more known symptoms from autocomplete, or enter history manually below.</p>";
+      markDirty();
+      return;
+    }
     state.questionAnswers = questions.map(function (q) {
       const prev = state.questionAnswers.find(function (a) {
         return a.questionId === q.id;
@@ -1330,6 +1367,7 @@
     });
     renderQuestions();
     markDirty();
+    updateHistoryCompletion();
   }
 
   function renderQuestions() {
