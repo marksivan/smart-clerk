@@ -51,9 +51,9 @@ function test(name, fn) {
   }
 }
 
-test("empty store has schemaVersion 1", () => {
+test("empty store has schemaVersion 2", () => {
   const meta = Store.getMeta();
-  assert.strictEqual(meta.schemaVersion, 1);
+  assert.strictEqual(meta.schemaVersion, 2);
   assert.strictEqual(meta.patientCount, 0);
 });
 
@@ -63,12 +63,62 @@ test("create patient with UUID and timestamps", () => {
   assert.ok(r.patient.id);
   assert.ok(r.patient.createdAt);
   assert.ok(r.patient.updatedAt);
+  assert.strictEqual(r.patient.firstName, "Ama");
+  assert.strictEqual(r.patient.lastName, "Mensah");
+  assert.ok(/^\d{6}$/.test(r.patient.localPatientId));
   assert.strictEqual(Store.patientStore.getAll().length, 1);
+});
+
+test("create patient with first/middle/last name fields", () => {
+  const r = Store.patientStore.save({
+    firstName: "Kwame",
+    middleName: "Nkrumah",
+    lastName: "Asante",
+    age: "50",
+  });
+  assert.ok(r.ok);
+  assert.strictEqual(r.patient.firstName, "Kwame");
+  assert.strictEqual(r.patient.middleName, "Nkrumah");
+  assert.strictEqual(r.patient.lastName, "Asante");
+  assert.strictEqual(r.patient.name, "Kwame Nkrumah Asante");
+  assert.ok(/^\d{6}$/.test(r.patient.localPatientId));
+});
+
+test("local patient IDs are unique 6-digit values", () => {
+  const a = Store.patientStore.save({ firstName: "A", lastName: "One" }).patient;
+  const b = Store.patientStore.save({ firstName: "B", lastName: "Two" }).patient;
+  assert.ok(/^\d{6}$/.test(a.localPatientId));
+  assert.ok(/^\d{6}$/.test(b.localPatientId));
+  assert.notStrictEqual(a.localPatientId, b.localPatientId);
+  // Explicit collision attempt
+  const clash = Store.patientStore.save({
+    firstName: "C",
+    lastName: "Three",
+    localPatientId: a.localPatientId,
+  });
+  assert.ok(clash.ok);
+  assert.notStrictEqual(clash.patient.localPatientId, a.localPatientId);
+});
+
+test("search by first name, last name, or local ID", () => {
+  const p = Store.patientStore.save({
+    firstName: "Ama",
+    lastName: "Mensah",
+    phone: "0244111222",
+  }).patient;
+  assert.strictEqual(Store.patientStore.search("ama").length, 1);
+  assert.strictEqual(Store.patientStore.search("mensah").length, 1);
+  assert.strictEqual(Store.patientStore.search(p.localPatientId).length, 1);
+  assert.strictEqual(Store.patientStore.search("zzz").length, 0);
 });
 
 test("update patient by id does not duplicate", () => {
   const r = Store.patientStore.save({ name: "Ama Mensah", age: "34" });
-  const u = Store.patientStore.update(r.patient.id, { age: "35", name: "Ama Mensah" });
+  const u = Store.patientStore.update(r.patient.id, {
+    age: "35",
+    firstName: "Ama",
+    lastName: "Mensah",
+  });
   assert.ok(u.ok);
   assert.strictEqual(Store.patientStore.getAll().length, 1);
   assert.strictEqual(Store.patientStore.getById(r.patient.id).age, "35");
@@ -82,6 +132,41 @@ test("duplicate patient warning", () => {
   const forced = Store.patientStore.save({ name: "Kofi Asante", age: "40" }, { force: true });
   assert.ok(forced.ok);
   assert.strictEqual(Store.patientStore.getAll().length, 2);
+});
+
+test("schema v1 patients migrate to first/last name and 6-digit IDs", () => {
+  // Bypass writeRaw schema stamping so we can simulate a stored v1 payload
+  global.localStorage.setItem(
+    Store.STORAGE_KEY,
+    JSON.stringify({
+      application: "Smart Clerking Assistant",
+      applicationVersion: "0.2.0",
+      schemaVersion: 1,
+      patients: [
+        {
+          id: "p1",
+          name: "Ama Mensah",
+          localPatientId: "SC-1",
+          age: "34",
+          sex: "female",
+          phone: "",
+          address: "",
+          occupation: "",
+          dob: "",
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+      encounters: [],
+    })
+  );
+  const meta = Store.getMeta();
+  assert.strictEqual(meta.schemaVersion, 2);
+  const p = Store.patientStore.getById("p1");
+  assert.ok(p);
+  assert.strictEqual(p.firstName, "Ama");
+  assert.strictEqual(p.lastName, "Mensah");
+  assert.ok(/^\d{6}$/.test(p.localPatientId));
 });
 
 test("encounters link to patient and do not create new patients", () => {
@@ -103,7 +188,7 @@ test("export and import merge report", () => {
   const p = Store.patientStore.save({ name: "Demo Patient", age: "20" }).patient;
   Store.encounterStore.save({ patientId: p.id, presentingComplaint: "fever" });
   const backup = Store.exportAll();
-  assert.strictEqual(backup.schemaVersion, 1);
+  assert.strictEqual(backup.schemaVersion, 2);
   assert.strictEqual(backup.application, "Smart Clerking Assistant");
   assert.ok(backup.applicationVersion);
   assert.ok(backup.exportedAt);

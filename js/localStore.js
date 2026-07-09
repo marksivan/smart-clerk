@@ -6,9 +6,9 @@
   "use strict";
 
   const STORAGE_KEY = "smartClerking:v1";
-  const SCHEMA_VERSION = 1;
+  const SCHEMA_VERSION = 2;
   const APPLICATION_NAME = "Smart Clerking Assistant";
-  const APPLICATION_VERSION = "0.2.0";
+  const APPLICATION_VERSION = "0.3.0";
 
   function uuid() {
     if (global.crypto && typeof global.crypto.randomUUID === "function") {
@@ -60,20 +60,21 @@
   }
 
   /**
-   * Migrate older shapes (including legacy `patients` array) into schema v1.
+   * Migrate older shapes (including legacy `patients` array) into current schema.
+   * Schema v2 adds firstName / middleName / lastName and unique 6-digit local IDs.
    */
   function migrate(data) {
     if (!data || typeof data !== "object") return emptyStore();
 
     // Legacy prototype: bare array under key "patients"
     if (Array.isArray(data)) {
-      return migrateLegacyPatientsArray(data);
+      return migratePatientNameFields(migrateLegacyPatientsArray(data));
     }
 
     if (!data.schemaVersion) {
       // Possibly old object without version
       if (Array.isArray(data.patients) && !data.encounters) {
-        return migrateLegacyPatientsArray(data.patients);
+        return migratePatientNameFields(migrateLegacyPatientsArray(data.patients));
       }
       data.schemaVersion = 1;
     }
@@ -90,8 +91,125 @@
 
     data.patients = Array.isArray(data.patients) ? data.patients : [];
     data.encounters = Array.isArray(data.encounters) ? data.encounters : [];
+
+    // Always normalize name parts / local IDs (safe for v1 imports and partial records)
+    data = migratePatientNameFields(data);
     data.schemaVersion = SCHEMA_VERSION;
     return data;
+  }
+
+  function splitFullName(fullName) {
+    const parts = String(fullName || "")
+      .trim()
+      .replace(/\s+/g, " ")
+      .split(" ")
+      .filter(Boolean);
+    if (!parts.length) {
+      return { firstName: "", middleName: "", lastName: "" };
+    }
+    if (parts.length === 1) {
+      return { firstName: parts[0], middleName: "", lastName: "" };
+    }
+    if (parts.length === 2) {
+      return { firstName: parts[0], middleName: "", lastName: parts[1] };
+    }
+    return {
+      firstName: parts[0],
+      middleName: parts.slice(1, -1).join(" "),
+      lastName: parts[parts.length - 1],
+    };
+  }
+
+  function composeDisplayName(patient) {
+    const first = String(patient.firstName || "").trim();
+    const middle = String(patient.middleName || "").trim();
+    const last = String(patient.lastName || "").trim();
+    const composed = [first, middle, last].filter(Boolean).join(" ");
+    if (composed) return composed;
+    return String(patient.name || "").trim();
+  }
+
+  function normalizeLocalPatientId(value) {
+    const digits = String(value == null ? "" : value).replace(/\D/g, "");
+    if (!digits) return "";
+    if (digits.length >= 6) return digits.slice(-6);
+    return digits.padStart(6, "0");
+  }
+
+  function isValidLocalPatientId(value) {
+    return /^\d{6}$/.test(String(value || ""));
+  }
+
+  function localIdTaken(localId, store, excludePatientId) {
+    const id = normalizeLocalPatientId(localId);
+    if (!id) return false;
+    return (store.patients || []).some(function (p) {
+      if (excludePatientId && p.id === excludePatientId) return false;
+      return normalizeLocalPatientId(p.localPatientId) === id;
+    });
+  }
+
+  function generateUniqueLocalPatientId(store, excludePatientId) {
+    const used = {};
+    (store.patients || []).forEach(function (p) {
+      if (excludePatientId && p.id === excludePatientId) return;
+      const id = normalizeLocalPatientId(p.localPatientId);
+      if (id) used[id] = true;
+    });
+    // Prefer crypto when available; fall back to Math.random
+    for (let attempt = 0; attempt < 5000; attempt++) {
+      let n;
+      if (global.crypto && typeof global.crypto.getRandomValues === "function") {
+        const buf = new Uint32Array(1);
+        global.crypto.getRandomValues(buf);
+        n = buf[0] % 1000000;
+      } else {
+        n = Math.floor(Math.random() * 1000000);
+      }
+      const candidate = String(n).padStart(6, "0");
+      if (!used[candidate]) return candidate;
+    }
+    throw new Error("Could not allocate a unique 6-digit patient ID.");
+  }
+
+  function migratePatientNameFields(store) {
+    const copy = Object.assign({}, store);
+    copy.patients = (store.patients || []).map(function (p) {
+      const next = Object.assign({}, p);
+      const hasParts =
+        String(next.firstName || "").trim() || String(next.lastName || "").trim();
+      if (!hasParts) {
+        const split = splitFullName(next.name);
+        next.firstName = split.firstName;
+        next.middleName = split.middleName;
+        next.lastName = split.lastName;
+      } else {
+        next.firstName = String(next.firstName || "").trim();
+        next.middleName = String(next.middleName || "").trim();
+        next.lastName = String(next.lastName || "").trim();
+      }
+      next.name = composeDisplayName(next) || String(next.name || "").trim();
+      next.localPatientId = normalizeLocalPatientId(next.localPatientId);
+      return next;
+    });
+
+    // Ensure every patient has a unique 6-digit local ID after migration
+    const seen = {};
+    copy.patients.forEach(function (p, index) {
+      let id = normalizeLocalPatientId(p.localPatientId);
+      if (!isValidLocalPatientId(id) || seen[id]) {
+        const others = copy.patients.filter(function (_x, i) {
+          return i !== index;
+        });
+        id = generateUniqueLocalPatientId({ patients: others }, p.id);
+      }
+      seen[id] = true;
+      p.localPatientId = id;
+      p.name = composeDisplayName(p) || p.name;
+    });
+
+    copy.schemaVersion = SCHEMA_VERSION;
+    return copy;
   }
 
   function migrateLegacyPatientsArray(arr) {
@@ -104,6 +222,9 @@
       store.patients.push({
         id: patientId,
         localPatientId: row.localPatientId || "",
+        firstName: "",
+        middleName: "",
+        lastName: "",
         name: name,
         dob: row.dob || "",
         age: row.age != null ? String(row.age) : "",
@@ -196,17 +317,31 @@
 
   function findDuplicatePatients(patient, store) {
     const storeData = store || readRaw();
-    const name = normalizeName(patient.name);
+    const name = normalizeName(composeDisplayName(patient) || patient.name);
+    const first = normalizeName(patient.firstName);
+    const last = normalizeName(patient.lastName);
     const phone = String(patient.phone || "").trim();
-    const localId = String(patient.localPatientId || "").trim();
+    const localId = normalizeLocalPatientId(patient.localPatientId);
     const dob = String(patient.dob || "").trim();
     const age = String(patient.age || "").trim();
 
     return storeData.patients.filter(function (p) {
       if (patient.id && p.id === patient.id) return false;
-      if (localId && p.localPatientId && p.localPatientId === localId) return true;
-      if (phone && p.phone && p.phone === phone && normalizeName(p.name) === name) return true;
-      if (name && normalizeName(p.name) === name) {
+      if (
+        localId &&
+        isValidLocalPatientId(localId) &&
+        normalizeLocalPatientId(p.localPatientId) === localId
+      ) {
+        return true;
+      }
+      const pName = normalizeName(composeDisplayName(p) || p.name);
+      const pFirst = normalizeName(p.firstName);
+      const pLast = normalizeName(p.lastName);
+      const sameName =
+        (name && pName === name) ||
+        (first && last && pFirst === first && pLast === last);
+      if (phone && p.phone && p.phone === phone && sameName) return true;
+      if (sameName) {
         if (dob && p.dob && p.dob === dob) return true;
         if (age && p.age && String(p.age) === age) return true;
         if (!dob && !age && !phone && !localId) return true;
@@ -229,21 +364,79 @@
         .trim()
         .toLowerCase();
       if (!q) return patientStore.getAll();
+      const qDigits = q.replace(/\D/g, "");
       return readRaw().patients.filter(function (p) {
+        const display = composeDisplayName(p) || p.name || "";
+        const first = String(p.firstName || "").toLowerCase();
+        const middle = String(p.middleName || "").toLowerCase();
+        const last = String(p.lastName || "").toLowerCase();
+        const localId = normalizeLocalPatientId(p.localPatientId);
         return (
-          (p.name && p.name.toLowerCase().indexOf(q) !== -1) ||
-          (p.localPatientId && p.localPatientId.toLowerCase().indexOf(q) !== -1) ||
+          display.toLowerCase().indexOf(q) !== -1 ||
+          first.indexOf(q) !== -1 ||
+          middle.indexOf(q) !== -1 ||
+          last.indexOf(q) !== -1 ||
+          (localId && localId.indexOf(qDigits || q) !== -1) ||
           (p.phone && p.phone.toLowerCase().indexOf(q) !== -1) ||
           (p.dob && p.dob.toLowerCase().indexOf(q) !== -1) ||
           (p.age && String(p.age).toLowerCase().indexOf(q) !== -1)
         );
       });
     },
+    allocateLocalPatientId: function (excludePatientId) {
+      return generateUniqueLocalPatientId(readRaw(), excludePatientId);
+    },
     save: function (patient, options) {
       options = options || {};
       const store = readRaw();
       const ts = nowIso();
-      const duplicates = findDuplicatePatients(patient, store);
+
+      const firstName = String(patient.firstName || "").trim();
+      const middleName = String(patient.middleName || "").trim();
+      let lastName = String(patient.lastName || "").trim();
+      let resolvedFirst = firstName;
+      let resolvedMiddle = middleName;
+      let resolvedLast = lastName;
+
+      if (!resolvedFirst && !resolvedLast && patient.name) {
+        const split = splitFullName(patient.name);
+        resolvedFirst = split.firstName;
+        resolvedMiddle = split.middleName;
+        resolvedLast = split.lastName;
+      }
+
+      let displayName = composeDisplayName({
+        firstName: resolvedFirst,
+        middleName: resolvedMiddle,
+        lastName: resolvedLast,
+        name: patient.name,
+      });
+      if (!displayName) {
+        displayName = String(patient.name || "").trim();
+      }
+
+      let localPatientId = normalizeLocalPatientId(patient.localPatientId);
+      if (!isValidLocalPatientId(localPatientId) || localIdTaken(localPatientId, store, patient.id)) {
+        if (patient.id && isValidLocalPatientId(localPatientId) && localIdTaken(localPatientId, store, patient.id)) {
+          return {
+            ok: false,
+            reason: "duplicate_local_id",
+            message: "Local patient ID " + localPatientId + " is already in use.",
+          };
+        }
+        // New patients (or missing/invalid IDs): allocate a unique 6-digit ID
+        localPatientId = generateUniqueLocalPatientId(store, patient.id);
+      }
+
+      const normalizedPatient = Object.assign({}, patient, {
+        firstName: resolvedFirst,
+        middleName: resolvedMiddle,
+        lastName: resolvedLast,
+        name: displayName,
+        localPatientId: localPatientId,
+      });
+
+      const duplicates = findDuplicatePatients(normalizedPatient, store);
       if (duplicates.length && !options.force && !patient.id) {
         return { ok: false, reason: "duplicate", duplicates: duplicates };
       }
@@ -255,7 +448,8 @@
         if (idx === -1) {
           return { ok: false, reason: "not_found" };
         }
-        const updated = Object.assign({}, store.patients[idx], patient, {
+        const updated = Object.assign({}, store.patients[idx], normalizedPatient, {
+          id: patient.id,
           updatedAt: ts,
         });
         store.patients[idx] = updated;
@@ -263,10 +457,32 @@
         return { ok: true, patient: updated, created: false };
       }
 
+      const usedStructuredNames = !!(
+        String(patient.firstName || "").trim() ||
+        String(patient.lastName || "").trim()
+      );
+      if (usedStructuredNames && (!resolvedFirst || !resolvedLast)) {
+        return {
+          ok: false,
+          reason: "validation",
+          message: "First name and last name are required.",
+        };
+      }
+      if (!resolvedFirst) {
+        return {
+          ok: false,
+          reason: "validation",
+          message: "Patient name is required.",
+        };
+      }
+
       const created = {
         id: uuid(),
-        localPatientId: patient.localPatientId || "",
-        name: patient.name || "",
+        localPatientId: localPatientId,
+        firstName: resolvedFirst,
+        middleName: resolvedMiddle,
+        lastName: resolvedLast,
+        name: displayName,
         dob: patient.dob || "",
         age: patient.age != null ? String(patient.age) : "",
         sex: patient.sex || "",
@@ -443,7 +659,7 @@
     } else {
       report.patients = data.patients.length;
       data.patients.forEach(function (p, i) {
-        if (!p || !p.id || !p.name) {
+        if (!p || !p.id || !(p.name || (p.firstName && p.lastName))) {
           report.errors.push("Patient at index " + i + " missing id or name.");
           report.valid = false;
         }
@@ -595,7 +811,7 @@
       if (existing) return { migrated: false, reason: "v1_exists" };
       const arr = JSON.parse(legacy);
       if (!Array.isArray(arr)) return { migrated: false, reason: "not_array" };
-      const migrated = migrateLegacyPatientsArray(arr);
+      const migrated = migratePatientNameFields(migrateLegacyPatientsArray(arr));
       writeRaw(migrated);
       return {
         migrated: true,
@@ -621,6 +837,12 @@
     encounterStore: encounterStore,
     createEmptyEncounter: createEmptyEncounter,
     findDuplicatePatients: findDuplicatePatients,
+    composeDisplayName: composeDisplayName,
+    splitFullName: splitFullName,
+    normalizeLocalPatientId: normalizeLocalPatientId,
+    generateUniqueLocalPatientId: function (excludePatientId) {
+      return generateUniqueLocalPatientId(readRaw(), excludePatientId);
+    },
     exportAll: exportAll,
     importAll: importAll,
     validateBackup: validateBackup,
