@@ -121,6 +121,12 @@ body {
   color: var(--brand-deep);
 }
 
+.subtitle {
+  margin: 0.25rem 0 0;
+  color: var(--ink-muted);
+  font-size: 0.9rem;
+}
+
 .header-meta {
   display: flex;
   flex-direction: column;
